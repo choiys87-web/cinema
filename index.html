@@ -48,7 +48,13 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
 .lobby .or{font-size:13px;color:var(--muted)}
 .lobby .big{font-size:17px;padding:14px 18px;align-self:flex-start}
 .meta{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-.meta #status{font-weight:600}
+.meta #status{font-weight:600;flex:1;min-width:0}
+#pauseBtn{flex:none;align-self:center;font-size:12.5px;font-weight:500;padding:4px 9px}
+#pauseBtn[aria-pressed="true"]{border-color:var(--curtain);color:var(--curtain)}
+.ctl{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:4px 0}
+.ctl p{margin:0;color:var(--muted);font-size:14px}
+.ctl .row{justify-content:center;flex-wrap:wrap}
+.ctl .big{font-size:17px;padding:13px 30px}
 .meta #clock{display:inline-block;font-family:var(--display);font-size:26px;line-height:1;font-variant-numeric:tabular-nums;color:var(--curtain)}
 .meta #clock.hot{color:var(--bad);animation:hot .5s ease-in-out infinite alternate}   /* 마지막 5초 */
 @keyframes hot{to{transform:scale(1.28)}}
@@ -167,7 +173,8 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   html.shell .grid{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}
   html.shell .stage{display:flex;flex-direction:column;min-height:0;padding:10px}
   html.shell .game{flex:1;min-height:0;gap:7px;overflow-y:auto}
-  html.shell .meta #status{font-size:14px}
+  html.shell .meta #status{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  html.shell .ctl{gap:7px} html.shell .ctl p{font-size:13px}
   html.shell .meta #clock{font-size:22px}
   html.shell .marquee{padding:7px 8px;flex:0 1 auto;min-height:46px;overflow-y:auto}   /* 자리가 모자라면 간판이 줄어들고, 입력칸은 항상 화면 안에 남는다 */
   html.shell .board{min-height:76px;padding:9px 2px;gap:7px 12px}
@@ -219,12 +226,19 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       </section>
 
       <section class="game" id="game" hidden>
-        <div class="meta"><span id="status">상영 준비 중</span><span id="clock" aria-label="남은 시간">--</span></div>
+        <div class="meta"><span id="status">상영 준비 중</span><button id="pauseBtn" type="button" hidden aria-pressed="false" title="지금 문제까지만 하고 다음 문제부터 멈춥니다">일시정지</button><span id="clock" aria-label="남은 시간">--</span></div>
         <div class="bar" aria-hidden="true"><i id="barfill"></i></div>
         <div class="marquee">
           <div class="bulbs" aria-hidden="true"></div>
           <div class="board" id="board" data-size="L" aria-live="polite"><span class="note">방에 연결하는 중입니다</span></div>
           <div class="bulbs" aria-hidden="true"></div>
+        </div>
+        <div class="ctl" id="ctl" hidden>
+          <p id="ctlText"></p>
+          <div class="row">
+            <button class="primary big" id="startBtn" type="button" hidden>시작</button>
+            <button id="endBtn" type="button" hidden>게임 끝내기</button>
+          </div>
         </div>
         <ol class="hints" id="hints">
           <li id="h1"><span class="hl"><span class="hn">힌트 1 · </span>나라</span><b class="hv">대기 중</b></li>
@@ -263,6 +277,10 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
           <select id="optCat" disabled></select>
           <label class="sr" for="optLv">난이도</label>
           <select id="optLv" disabled></select>
+        </div>
+        <div class="row">
+          <label class="sr" for="optN">한 게임 문제 수</label>
+          <select id="optN" disabled></select>
         </div>
         <p class="tip" id="optTip">방장만 바꿀 수 있습니다.</p>
         <div id="optHints" role="group" aria-label="힌트와 시간"></div>
@@ -310,12 +328,13 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   const CATS = { all: ["전체", q => true], kr: ["한국 영화", q => q.c === "한국"], world: ["외국 영화", q => q.c !== "한국"], ani: ["애니메이션", q => q.g === "애니메이션"] };
   const LEVELS = { easy: ["쉬움", [1, 0, 0], "유명한 영화만 나옵니다."], normal: ["보통", PICK, "마이너한 영화는 드물게 나옵니다."], hard: ["어려움", [1, 1, 1], "마이너한 영화도 똑같이 나옵니다."] };
   // 힌트·시간 설정: 힌트마다 켜기/끄기와 "앞 단계 뒤 몇 초"(h), 마지막 힌트 뒤 남는 시간(tail), 정답 공개 시간(rev). 단위는 초.
+  const COUNTS = [0, 10, 20, 30, 50, 100];   // 한 게임 문제 수 선택지 (0 = 끊김없이 계속)
   const HINT_NAMES = ["나라", "연도", "장르", "글자 일부", "글자 더"];
   const DEF_TIMING = { h: HINT_AT.map((t, i) => [true, Math.round((t - (i ? HINT_AT[i - 1] : 0)) / 1000)]), tail: Math.round((Q_MS - HINT_AT[HINT_AT.length - 1]) / 1000), rev: Math.round(REVEAL_MS / 1000) };
   const clampInt = (v, lo, hi, d) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
   function cleanOpt(o){   // 저장된 값·입력값·예전 형식을 안전한 범위로 맞춘다
     o = o || {}; const h = Array.isArray(o.h) ? o.h : [];
-    return { cat: CATS[o.cat] ? o.cat : "all", lv: LEVELS[o.lv] ? o.lv : "normal",
+    return { cat: CATS[o.cat] ? o.cat : "all", lv: LEVELS[o.lv] ? o.lv : "normal", n: COUNTS.indexOf(Number(o.n)) >= 0 ? Number(o.n) : 0,
       h: DEF_TIMING.h.map((d, i) => [Array.isArray(h[i]) ? h[i][0] !== false : true, clampInt(Array.isArray(h[i]) && h[i][1] != null ? h[i][1] : d[1], 1, 60, d[1])]),
       tail: clampInt(o.tail == null ? DEF_TIMING.tail : o.tail, 3, 60, DEF_TIMING.tail), rev: clampInt(o.rev == null ? DEF_TIMING.rev : o.rev, 3, 30, DEF_TIMING.rev) };
   }
@@ -385,11 +404,13 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   const lastMsg = {};                 // pid → 마지막 수신 시각(도배 방지)
   let slot = 0, hall = [];            // 지금 구간 번호, 명예의 전당 [{s:구간 시작 시각, nick, n:맞힌 수, ids:왕의 pid들}]
   let streak = { pid: "", n: 0 };     // 연속 정답 중인 사람
-  let opt = cleanOpt(null);           // 방 설정: 범위·난이도·힌트·시간
+  let opt = cleanOpt(null);           // 방 설정: 범위·난이도·문제 수·힌트·시간
+  // 게임 진행 상태: idle(시작 전) · run(진행 중) · paused(일시정지) · done(끝). done=끝난 문제 수, tally=이번 게임에서 맞힌 수, req=일시정지 예약
+  let game = { st: "idle", done: 0, tally: {}, req: false, result: "" };
   const slotOf = t => Math.floor(t / SLOT_MS);
 
   const online = pid => pid === myPid || Array.from(conns.values()).indexOf(pid) >= 0;
-  function saveRoom(){ ls.set("cq-room-" + code, JSON.stringify({ players, roundNo, slot, hall, opt })); }
+  function saveRoom(){ ls.set("cq-room-" + code, JSON.stringify({ players, roundNo, slot, hall, opt, game })); }
   function broadcast(msg){ for (const c of conns.keys()) { try { if (c.open) c.send(msg); } catch (e) {} } }
   function pushPub(){ pub = makePub(); lastBeat = Date.now(); broadcast({ t:"pub", pub }); render(); }
   function addChat(m){ chat.push(m); if (chat.length > KEEP_CHAT) chat.shift(); broadcast({ t:"chat", m }); renderChat(); }
@@ -430,6 +451,25 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; } cursor = 0; }
     round = { q: pool[order[cursor++]], start: at, win: null, ph: "wait", lvl: 0, skip: {}, passed: false }; Object.assign(round, timingOf(opt)); round.lh = letterHints(round.q.t); roundNo++; saveRoom(); pushPub();
   }
+  function startGame(){   // 시작 · 이어서 하기 · 다시 시작
+    if (!pool.length || game.st === "run") return;
+    if (game.st === "paused") { game.st = "run"; sysChat("이어서 진행합니다"); }
+    else { game = { st: "run", done: 0, tally: {}, req: false, result: "" }; streak = { pid: "", n: 0 }; sysChat("게임 시작 · " + (opt.n ? opt.n + "문제" : "끊김없이 계속")); }
+    startRound(Date.now() + 1500);
+  }
+  function togglePause(){   // 일시정지 예약/취소: 지금 문제는 끝까지 하고 다음 문제부터 멈춘다
+    if (game.st !== "run") return; game.req = !game.req; saveRoom();
+    sysChat(game.req ? "방장이 일시정지를 눌렀습니다 · 이번 문제까지만 하고 멈춥니다" : "일시정지 취소 · 계속 진행합니다"); pushPub();
+  }
+  function finishGame(){   // 이번 게임 결과(맞힌 수 1~3위)를 알리고 멈춘다
+    const ids = Object.keys(game.tally).filter(k => players[k] && game.tally[k] > 0).sort((a, b) => game.tally[b] - game.tally[a]).slice(0, 3);
+    game.result = "게임 끝 · " + game.done + "문제" + (ids.length ? " · " + ids.map((k, i) => (i + 1) + "위 " + players[k].nick + " " + game.tally[k] + "문제").join(" · ") : " · 맞힌 사람 없음");
+    game.st = "done"; game.req = false; round = null; streak = { pid: "", n: 0 }; saveRoom(); sysChat(game.result); pushPub();
+  }
+  function endGame(){   // 일시정지 중에 게임을 끝낸다
+    if (game.st !== "paused") return;
+    if (game.done > 0) finishGame(); else { game = { st: "idle", done: 0, tally: {}, req: false, result: "" }; saveRoom(); pushPub(); }
+  }
   function makePub(){
     const now = Date.now(), r = round;
     const kings = hall.length && hall[hall.length - 1].ids || [];   // 가장 최근 구간의 왕에게 왕관을 씌운다
@@ -438,24 +478,31 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       .sort((a, b) => b.score - a.score || a.nick.localeCompare(b.nick)).slice(0, 50);
     const slotEnd = (slot + 1) * SLOT_MS;
     const pubHall = hall.map(e => ({ s: e.s, nick: e.nick, n: e.n }));
-    if (!r) return { code, now, ph:"load", players:list, here: list.filter(p => p.on).length, slotEnd, hall: pubHall, opt };
+    const g = { st: game.st, done: game.done, req: game.req, result: game.result };
+    if (!r) return { code, now, ph: pool.length ? "stop" : "load", game: g, players:list, here: list.filter(p => p.on).length, slotEnd, hall: pubHall, opt };   // stop: 시작 전·일시정지·게임 끝
     const ph = phaseOf(r, now), lvl = levelOf(r, now, ph), over = ph === "won" || ph === "timeup", q = r.q;
     const el = now - r.start, vals = [q.c, q.y + "년", q.g, r.lh[0], r.lh[1]];
     const shown = i => over || (ph === "play" && r.at[i] != null && el >= r.at[i]);   // 꺼 둔 힌트는 정답 공개 때만 보인다
-    return { code, now, ph, start:r.start, dur:r.dur, hintAt:r.at, next:nextStart(r), no:roundNo,
+    return { code, now, ph, start:r.start, dur:r.dur, hintAt:r.at, next:nextStart(r), no: game.done + 1, game: g,
       cho: chosung(q.t), hints: vals.map((v, i) => shown(i) ? v : null), no5: !r.lh[1],
       win: r.win ? { pid:r.win.pid, nick:r.win.nick, sec: (r.win.at - r.start) / 1000 } : null,
       skip: ph === "play" ? skipState(r) : null, passed: r.passed, streak: streak.n >= 2 ? streak : null, opt,
       ans: over ? { t:q.t, y:q.y } : null, players:list, here: list.filter(p => p.on).length, slotEnd, hall: pubHall };   // 정답은 공개 단계에서만 내보낸다
   }
   function hostTick(){
-    const now = Date.now(), r = round; if (!r) return;
-    if (slotOf(now) !== slot) {   // 구간이 바뀌었다
+    const now = Date.now(); if (!pool.length) return;
+    if (slotOf(now) !== slot) {   // 구간이 바뀌었다 (게임이 멈춰 있어도 점수 초기화는 제시간에 한다)
       const e = closeSlot(); slot = slotOf(now); saveRoom();
       if (e) sysChat(slotLabel(e.s) + "의 왕은 " + e.nick + " 님 (" + e.n + "문제) · " + (e.rest ? e.rest + " · " : "") + "점수를 초기화했습니다"); pushPub();
     }
+    const r = round; if (!r) { if (now - lastBeat > 5000) pushPub(); return; }
     const ns = nextStart(r);
-    if (now >= ns) { startRound(now - ns > 4000 ? now + 1500 : ns); return; }
+    if (now >= ns) {   // 한 문제가 끝났다: 문제 수를 채웠으면 게임 끝, 일시정지를 눌러 두었으면 멈춤, 아니면 다음 문제
+      game.done++;
+      if (opt.n && game.done >= opt.n) finishGame();
+      else if (game.req) { game.req = false; game.st = "paused"; round = null; streak = { pid: "", n: 0 }; saveRoom(); sysChat("일시정지 · 방장이 이어서 하기를 누르면 계속합니다"); pushPub(); }
+      else startRound(now - ns > 4000 ? now + 1500 : ns);
+      return; }
     const ph = phaseOf(r, now), lvl = levelOf(r, now, ph);
     if (ph !== r.ph || lvl !== r.lvl) {
       if (ph === "timeup" && r.ph !== "timeup") { streak = { pid: "", n: 0 }; sysChat((r.passed ? "패스 · 정답은 " : "시간 초과 · 정답은 ") + r.q.t); }
@@ -475,7 +522,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     // 정답 순간: 걸린 시간, 힌트 없이 맞혔는지, 몇 문제 연속인지 같이 알린다
     const tags = [((now - r.start) / 1000).toFixed(1) + "초"]; if (levelOf(r, now, "play") === 0) tags.push("노힌트");
     streak = streak.pid === pid ? { pid, n: streak.n + 1 } : { pid, n: 1 }; if (streak.n >= 2) tags.push(streak.n + "연속");
-    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 9; p.score++; saveRoom();
+    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 9; p.score++; game.tally[pid] = (game.tally[pid] || 0) + 1; saveRoom();
     sysChat(p.nick + " 님 정답 · " + r.q.t + " (" + tags.join(" · ") + ")"); pushPub();
   }
   // 패스 투표: 접속한 사람의 과반이 패스하면 시간을 끝까지 기다리지 않고 정답을 공개한다
@@ -489,7 +536,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     next = cleanOpt(next); if (JSON.stringify(next) === JSON.stringify(opt)) return;
     if (next.cat !== opt.cat || next.lv !== opt.lv) cursor = order.length;   // 범위·난이도가 바뀌면 다음 문제부터 다시 추린다
     opt = next; saveRoom(); const on = opt.h.map((x, i) => x[0] ? HINT_NAMES[i] : null).filter(Boolean);
-    sysChat("방 설정 변경 · " + CATS[opt.cat][0] + " · " + LEVELS[opt.lv][0] + " · 힌트 " + (on.length ? on.join("·") : "없음") + " · 문제당 " + timingOf(opt).dur / 1000 + "초 (다음 문제부터)"); pushPub();
+    sysChat("방 설정 변경 · " + CATS[opt.cat][0] + " · " + LEVELS[opt.lv][0] + " · 힌트 " + (on.length ? on.join("·") : "없음") + " · 문제당 " + timingOf(opt).dur / 1000 + "초 · " + (opt.n ? "한 게임 " + opt.n + "문제" : "끊김없이 계속") + " (다음 문제부터)"); pushPub();
   }
   function onGuestData(c, d){
     if (!d || typeof d !== "object") return;
@@ -515,6 +562,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     role = "host"; let saved = null; try { saved = JSON.parse(ls.get("cq-room-" + code) || "null"); } catch (e) {}
     if (saved && saved.players) for (const k of Object.keys(saved.players)) players[k] = { nick: cleanNick(saved.players[k].nick) || "관객", score: Number(saved.players[k].score) || 0 };
     if (saved && saved.roundNo) roundNo = Number(saved.roundNo) || 0;
+    if (saved && saved.game) { const g = saved.game, tally = {};   // 진행 중에 새로고침했으면 일시정지 상태로 돌아온다
+      if (g.tally && typeof g.tally === "object") for (const k of Object.keys(g.tally)) tally[k] = Number(g.tally[k]) || 0;
+      game = { st: g.st === "done" ? "done" : g.st === "run" || g.st === "paused" ? "paused" : "idle", done: Number(g.done) || 0, tally, req: false, result: String(g.result || "").slice(0, 300) }; }
     if (saved && Array.isArray(saved.hall)) hall = saved.hall.filter(e => e && typeof e.nick === "string").map(e => ({ s: Number(e.s) || 0, nick: e.nick.slice(0, 80), n: Number(e.n) || 0, ids: Array.isArray(e.ids) ? e.ids.map(String).slice(0, 50) : [] })).slice(-KEEP_HALL);
     if (saved && saved.opt) opt = cleanOpt(saved.opt);
     slot = (saved && Number(saved.slot)) || slotOf(Date.now());
@@ -523,7 +573,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     enterRoom(); setMode("warn", "방 " + code + " · 방을 여는 중…"); pub = makePub(); render();
     const full = await loadPool();
     $("foot").textContent = "채팅에 제목을 쓰면 정답 처리 · 모르면 패스 버튼이나 ㅈㅈ(과반이면 넘어감) · 띄어쓰기와 문장부호는 무시합니다 · 간판에 보이는 숫자·영문은 안 써도 정답 · 부제까지 써야 정답 · " + (full ? "문제 " + pool.length.toLocaleString("ko-KR") + "편" : "문제 목록(pool.json)을 불러오지 못해 예시 " + pool.length + "편으로 진행 중");
-    startRound(Date.now() + 1500); setInterval(hostTick, 250);
+    setInterval(hostTick, 250); pushPub();   // 문제는 방장이 시작을 눌러야 나간다
     peer = new Peer(PREFIX + code, peerOpts());
     const label = () => setMode("ok", "방 " + code + " · 호스트 · 이 탭을 열어 두는 동안 게임이 이어집니다");
     peer.on("open", label);
@@ -613,7 +663,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   // 방 설정 칸에 값을 채운다 / 칸에서 값을 읽는다
   function showOpt(o){
     const put = (c, v, key) => { if (document.activeElement !== c && c[key] !== v) c[key] = v; };
-    put($("optCat"), o.cat, "value"); put($("optLv"), o.lv, "value");
+    put($("optCat"), o.cat, "value"); put($("optLv"), o.lv, "value"); put($("optN"), String(o.n), "value");
     o.h.forEach((x, i) => { put($("hOn" + i), x[0], "checked"); put($("hSec" + i), String(x[1]), "value"); $("hOn" + i).closest(".hrow").classList.toggle("offrow", !x[0]); });
     put($("optTail"), String(o.tail), "value"); put($("optRev"), String(o.rev), "value");
     setText($("optTip"), LEVELS[o.lv][2] + (role === "host" ? " 바꾸면 다음 문제부터 적용됩니다." : " 방장만 바꿀 수 있습니다."));
@@ -621,26 +671,47 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   }
   function readOpt(){
     const num = id => $(id).value === "" ? null : $(id).value;
-    return cleanOpt({ cat: $("optCat").value, lv: $("optLv").value, h: HINT_NAMES.map((_, i) => [$("hOn" + i).checked, num("hSec" + i)]), tail: num("optTail"), rev: num("optRev") });
+    return cleanOpt({ cat: $("optCat").value, lv: $("optLv").value, n: $("optN").value, h: HINT_NAMES.map((_, i) => [$("hOn" + i).checked, num("hSec" + i)]), tail: num("optTail"), rev: num("optRev") });
+  }
+  // 문제가 나가지 않는 동안(시작 전·일시정지·게임 끝)의 화면
+  function renderStop(p, g, total){
+    const host = role === "host", prog = g.done + (total ? "/" + total : "") + "문제";
+    setText($("status"), g.st === "paused" ? "일시정지 · " + prog + " 진행" : g.st === "done" ? "게임 끝" : "시작 전");
+    setText($("clock"), "--"); $("clock").classList.remove("hot"); $("barfill").style.transform = "scaleX(0)"; $("skipBtn").disabled = true; sndKey = "stop";
+    for (let i = 1; i <= 5; i++) { const li = $("h" + i); li.classList.remove("on"); setText(li.querySelector(".hv"), "대기 중"); }
+    $("hints").classList.remove("no4", "no5");
+    const key = "stop:" + g.st;
+    if (key !== boardKey) { boardKey = key; const b = $("board"); b.textContent = ""; b.dataset.size = "L"; b.removeAttribute("aria-label");
+      b.appendChild(el("span", "note", g.st === "paused" ? "잠시 멈췄습니다" : g.st === "done" ? "상영이 끝났습니다" : "곧 상영을 시작합니다")); }
+    const res = $("result"); res.dataset.k = g.st === "done" ? "good" : ""; setText(res, g.st === "done" ? g.result || "" : "");
+    setText($("ctlText"), host
+      ? (g.st === "paused" ? "이어서 하기를 누르면 다음 문제부터 계속합니다." : g.st === "done" ? "다시 시작하면 1번 문제부터 새 게임입니다." : "참가자가 모이면 시작을 누르세요. 문제 수는 방 설정에서 고릅니다 (지금: " + (total ? total + "문제" : "끊김없이 계속") + ").")
+      : (g.st === "paused" ? "방장이 일시정지했습니다. 이어서 하기를 기다리는 중입니다." : g.st === "done" ? "방장이 다시 시작하기를 기다리는 중입니다." : "방장이 시작하기를 기다리는 중입니다."));
+    const sb = $("startBtn"); sb.hidden = !host; setText(sb, g.st === "paused" ? "이어서 하기" : g.st === "done" ? "다시 시작" : "시작"); $("endBtn").hidden = !(host && g.st === "paused");
+    setText($("shareTip"), (host ? "이 링크를 보내면 누구나 바로 참가합니다. " : "") + "지금 " + p.here + "명 접속 중.");
   }
   function render(){
     if (!pub) return; renderRank(); renderHall();
     const p = pub, now = Date.now() + (role === "guest" ? offset : 0);
     if (p.slotEnd) { const sec = Math.max(0, Math.ceil((p.slotEnd - now) / 1000)); setText($("rankTip"), hm(p.slotEnd) + "에 점수 초기화 · " + Math.floor(sec / 60) + ":" + pad2(sec % 60) + " 남음"); }
+    if (p.opt && !optDirty) showOpt(cleanOpt(p.opt));   // 방 설정 칸을 방장 쪽 값에 맞춘다 (방장이 고치는 중에는 덮어쓰지 않는다)
     if (p.ph === "load") { setText($("status"), "문제를 불러오는 중"); return; }
+    const g = p.game || { st: "run", done: 0 }, total = p.opt && p.opt.n ? p.opt.n : 0, stopped = p.ph === "stop";
+    $("ctl").hidden = !stopped; const pb = $("pauseBtn"); pb.hidden = !(role === "host" && !stopped && g.st === "run");
+    setText(pb, g.req ? "일시정지 취소" : "일시정지"); pb.setAttribute("aria-pressed", g.req ? "true" : "false");
+    if (stopped) { renderStop(p, g, total); return; }
     // 호스트가 보낸 단계와 시계가 살짝 어긋나도 화면은 시간 기준으로 자연스럽게 넘긴다
     const ph = p.ph === "play" && now >= p.start + p.dur ? "timeup" : p.ph === "wait" && now >= p.start ? "play" : p.ph;
     const over = ph === "won" || ph === "timeup", el_ = now - p.start;
     const left = Math.max(0, Math.ceil(((ph === "play" ? p.start + p.dur : ph === "wait" ? p.start : p.next) - now) / 1000));
     setText($("clock"), String(left)); $("clock").classList.toggle("hot", ph === "play" && left <= 5);
     $("skipBtn").disabled = ph !== "play";
-    if (p.opt && !optDirty) showOpt(cleanOpt(p.opt));   // 방장이 고치는 중에는 덮어쓰지 않는다
     // 단계가 바뀌는 순간에만 효과음 (방에 막 들어온 순간은 건너뛴다)
     const sk = p.start + ":" + ph;
     if (sk !== sndKey) { const first = !sndKey; sndKey = sk;
       if (!first) { if (ph === "won") tone(p.win && p.win.pid === myPid ? SND.mine : SND.other); else if (ph === "timeup") tone(SND.out); else if (ph === "play") tone(SND.next); } }
     $("barfill").style.transform = "scaleX(" + (ph === "play" ? Math.max(0, 1 - el_ / p.dur) : ph === "wait" ? 1 : 0) + ")";
-    setText($("status"), ph === "wait" ? "다음 문제 준비 중" : ph === "play" ? p.no + "번째 문제 · 이 영화의 제목은?" : "정답 공개");
+    setText($("status"), ph === "wait" ? "다음 문제 준비 중" : ph === "play" ? p.no + (total ? "/" + total : "") + "번째 문제 · " + (g.req ? "이 문제까지만 하고 멈춥니다" : "이 영화의 제목은?") : "정답 공개");
     hintRow("h1", p.hints[0], p.hints[0], p.hintAt[0], el_, ph);
     hintRow("h2", p.hints[1], p.hints[1], p.hintAt[1], el_, ph);
     hintRow("h3", p.hints[2], p.hints[2], p.hintAt[2], el_, ph);
@@ -730,7 +801,13 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   // 고칠 때마다 바로 보내지 않고, 손을 뗀 뒤 잠깐 기다렸다가 한 번에 적용한다 (채팅 안내가 줄줄이 뜨지 않게)
   const applyOpt = () => { clearTimeout(optTimer); if (role !== "host") return; const o = readOpt(); optDirty = false; setOpt(o); showOpt(o); };
   $("optPanel").addEventListener("change", () => { if (role !== "host") return; optDirty = true; clearTimeout(optTimer); optTimer = setTimeout(applyOpt, 900); });
-  $("optReset").addEventListener("click", () => { if (role !== "host") return; clearTimeout(optTimer); optDirty = false; const o = cleanOpt({ cat: $("optCat").value, lv: $("optLv").value }); setOpt(o); showOpt(o); });
+  $("optReset").addEventListener("click", () => { if (role !== "host") return; clearTimeout(optTimer); optDirty = false; const o = cleanOpt({ cat: $("optCat").value, lv: $("optLv").value, n: $("optN").value }); setOpt(o); showOpt(o); });
+  for (const n of COUNTS) { const o = document.createElement("option"); o.value = String(n); o.textContent = "문제 수: " + (n ? n + "문제" : "끊김없이 계속"); $("optN").appendChild(o); }
+  // 방장의 진행 버튼
+  $("startBtn").addEventListener("click", () => { if (role === "host") startGame(); });
+  $("endBtn").addEventListener("click", () => { if (role === "host") endGame(); });
+  $("pauseBtn").addEventListener("pointerdown", e => e.preventDefault());
+  $("pauseBtn").addEventListener("click", () => { if (role === "host") togglePause(); });
   // 효과음 켜고 끄기 + 첫 클릭·키 입력 때 소리 낼 준비 (브라우저는 사용자 동작 뒤에만 소리를 허용한다)
   const sndLabel = () => { const b = $("sndBtn"); b.textContent = sndOn ? "효과음 켜짐" : "효과음 꺼짐"; b.setAttribute("aria-pressed", sndOn ? "true" : "false"); };
   $("sndBtn").addEventListener("click", () => { sndOn = !sndOn; ls.set("cq-snd", sndOn ? "1" : "0"); sndLabel(); if (sndOn) { unlockSound(); setTimeout(() => tone(SND.mine), 60); } });
