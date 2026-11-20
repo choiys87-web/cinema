@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content">
 <title>초성 영화관</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
 <style>
@@ -32,6 +32,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
 .top h1 a{color:var(--curtain);text-decoration:none}
 .top p{margin:0;color:var(--muted)}
 .mode{margin-left:auto;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+#viewBtn{display:none}
 .mode::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .mode[data-m="ok"]::before{background:var(--good)}
 .mode[data-m="warn"]::before{background:var(--marquee)}
@@ -67,7 +68,6 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
 .board .note{color:var(--tile-ink);opacity:.75;font-size:15px;text-align:center}
 
 .hints{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-@media (max-width:520px){ .hints{grid-template-columns:repeat(2,minmax(0,1fr))} }
 .hints li{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .hints .hl{font-size:12px;color:var(--muted);letter-spacing:.02em}
 .hints .hv{font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -116,6 +116,58 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
 #chatList li.mine .n{color:var(--curtain)}
 #chatList li.sys{color:var(--muted);font-size:12.5px}
 #chatList li.ok .x{color:var(--good);font-weight:600}
+
+/* ── 휴대폰 화면 ──────────────────────────────────────
+   방 안에서는 화면 한 장에 간판·힌트·채팅·입력칸이 다 들어오게 하고(키보드가 올라오면 그만큼 줄어든다),
+   순위·방 링크·닉네임·명예의 전당은 위쪽 버튼으로 넘겨 본다. */
+@media (max-width:700px){
+  body{padding:12px 10px 20px}
+  input[type="text"]{font-size:16px}   /* 16px보다 작으면 아이폰이 입력할 때 화면을 확대한다 */
+  .hints{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .hints li{flex-direction:row;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 9px}
+  .hints .hn{display:none}
+  .hints .hl{white-space:nowrap}
+  .hints .hv{font-size:13.5px;text-align:right}
+
+  body.inroom{padding:8px}
+  body.inroom .wrap{gap:8px}
+  body.inroom .top{flex-wrap:nowrap;align-items:center;gap:8px}
+  body.inroom .top h1{font-size:19px;white-space:nowrap}
+  body.inroom .top p{display:none}
+  body.inroom .mode{display:block;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body.inroom .mode::before{display:inline-block;margin-right:5px}
+  body.inroom #viewBtn{display:block;flex:none;font-size:13px;padding:6px 10px}
+  body.inroom[data-view="info"] .stage{display:none}
+  body.inroom:not([data-view="info"]) aside{display:none}
+
+  html.shell,html.shell body{height:var(--vh,100dvh);overflow:hidden}
+  html.shell .wrap{height:100%}
+  html.shell .grid{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}
+  html.shell .stage{display:flex;flex-direction:column;min-height:0;padding:10px}
+  html.shell .game{flex:1;min-height:0;gap:7px;overflow-y:auto}
+  html.shell .meta #status{font-size:14px}
+  html.shell .meta #clock{font-size:22px}
+  html.shell .marquee{padding:7px 8px}
+  html.shell .board{min-height:76px;padding:9px 2px;gap:7px 12px}
+  html.shell .word{gap:4px}
+  html.shell .result{min-height:0;font-size:13px;line-height:1.4}
+  html.shell .result:empty{display:none}
+  html.shell #chatList{flex:1 1 0;height:auto;min-height:52px;padding:8px 10px;overscroll-behavior:contain}
+  html.shell #chat{padding:10px 12px}
+  html.shell .foot{display:none}
+
+  /* 키보드가 올라왔거나 가로로 눕힌 낮은 화면: 머리줄과 장식을 접어 채팅 자리를 남긴다 */
+  html.shell.tight body{padding:5px}
+  html.shell.tight .top,html.shell.tight .bulbs{display:none}
+  html.shell.tight .stage{padding:8px}
+  html.shell.tight .game{gap:5px}
+  html.shell.tight .board{min-height:50px;padding:6px 2px;gap:5px 10px}
+  html.shell.tight .tile{font-size:25px}
+  html.shell.tight .board[data-size="M"] .tile{font-size:19px}
+  html.shell.tight .board[data-size="S"] .tile{font-size:15px}
+  html.shell.tight .hints li{padding:3px 8px}
+  html.shell.tight #chatList{min-height:40px}
+}
 </style>
 </head>
 <body>
@@ -124,6 +176,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     <h1><a href="./" id="home">초성 영화관</a></h1>
     <p>초성만 보고 영화 제목을 가장 먼저 맞히면 1점</p>
     <span class="mode" id="mode" data-m="">방에 들어가기 전</span>
+    <button id="viewBtn" type="button" hidden aria-pressed="false">순위 · 방 정보</button>
   </header>
 
   <div class="grid">
@@ -150,16 +203,16 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
           <div class="bulbs" aria-hidden="true"></div>
         </div>
         <ol class="hints">
-          <li id="h1"><span class="hl">힌트 1 · 나라</span><b class="hv">대기 중</b></li>
-          <li id="h2"><span class="hl">힌트 2 · 연도</span><b class="hv">대기 중</b></li>
-          <li id="h3"><span class="hl">힌트 3 · 장르</span><b class="hv">대기 중</b></li>
-          <li id="h4"><span class="hl">힌트 4 · 글자 공개</span><b class="hv">대기 중</b></li>
+          <li id="h1"><span class="hl"><span class="hn">힌트 1 · </span>나라</span><b class="hv">대기 중</b></li>
+          <li id="h2"><span class="hl"><span class="hn">힌트 2 · </span>연도</span><b class="hv">대기 중</b></li>
+          <li id="h3"><span class="hl"><span class="hn">힌트 3 · </span>장르</span><b class="hv">대기 중</b></li>
+          <li id="h4"><span class="hl"><span class="hn">힌트 4 · </span>글자<span class="hn"> 공개</span></span><b class="hv">대기 중</b></li>
         </ol>
         <p class="result" id="result" role="status"></p>
         <ul id="chatList" aria-live="polite" aria-label="채팅"><li class="empty">아직 대화가 없습니다.</li></ul>
         <form class="row" id="chatForm" autocomplete="off">
           <label class="sr" for="chat">채팅 · 정답 입력</label>
-          <input type="text" id="chat" maxlength="200" placeholder="채팅하거나 영화 제목을 입력하고 Enter" autocomplete="off" enterkeyhint="send">
+          <input type="text" id="chat" maxlength="200" placeholder="채팅 · 정답 입력" autocomplete="off" enterkeyhint="send">
           <button class="primary" id="chatBtn" type="submit">보내기</button>
         </form>
         <p class="foot" id="foot">채팅에 제목을 쓰면 정답 처리 · 문제당 40초 · 띄어쓰기와 문장부호는 무시합니다 · 부제는 생략해도 정답</p>
@@ -412,8 +465,23 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   // ── 화면 ─────────────────────────────────────────────
   function enterRoom(){
     $("lobby").hidden = true; $("game").hidden = false; $("sharePanel").hidden = false;
+    document.body.classList.add("inroom"); $("viewBtn").hidden = false; setView("game");
     $("link").value = location.href.split("#")[0] + "#" + code;
     setInterval(render, 200);
+  }
+  // 휴대폰: 게임 화면 ↔ 순위·방 정보 화면
+  function setView(v){
+    document.body.dataset.view = v; document.documentElement.classList.toggle("shell", v === "game");
+    const b = $("viewBtn"); b.textContent = v === "game" ? "순위 · 방 정보" : "게임으로"; b.setAttribute("aria-pressed", v === "info" ? "true" : "false");
+    window.scrollTo(0, 0); fitScreen();
+  }
+  // 실제로 보이는 높이(키보드를 뺀 높이)에 화면을 맞춘다
+  function fitScreen(){
+    const vv = window.visualViewport, h = vv ? vv.height * vv.scale : window.innerHeight, root = document.documentElement;
+    root.style.setProperty("--vh", Math.round(h) + "px"); root.classList.toggle("tight", h < 500);
+    if (!root.classList.contains("shell") || !window.matchMedia("(max-width:700px)").matches) return;
+    if (window.scrollY || (vv && vv.offsetTop)) window.scrollTo(0, 0);   // 아이폰이 입력칸을 보이려고 화면을 밀어 올린 것을 되돌린다
+    const ul = $("chatList"); ul.scrollTop = ul.scrollHeight;
   }
   function hintRow(id, val, shown, left, ph){
     const li = $(id), on = val != null; li.classList.toggle("on", on);
@@ -493,7 +561,12 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     if (!x || !role || now - lastChatAt < 250) return; lastChatAt = now;
     if (role === "host") { say(myPid, x); inp.value = ""; } else if (send({ t:"chat", x })) inp.value = "";
     const ul = $("chatList"); ul.scrollTop = ul.scrollHeight;
+    inp.focus();   // 보내기 버튼을 눌러도 키보드가 내려가지 않게
   });
+  $("chatBtn").addEventListener("pointerdown", e => e.preventDefault());   // 버튼이 입력칸의 포커스를 가져가지 않게
+  $("viewBtn").addEventListener("click", () => setView(document.body.dataset.view === "info" ? "game" : "info"));
+  if (window.visualViewport) { window.visualViewport.addEventListener("resize", fitScreen); window.visualViewport.addEventListener("scroll", fitScreen); }
+  window.addEventListener("resize", fitScreen); fitScreen();
   $("copyBtn").addEventListener("click", async () => {
     const inp = $("link"); try { await navigator.clipboard.writeText(inp.value); $("copyBtn").textContent = "복사됨"; }
     catch (e) { inp.select(); $("copyBtn").textContent = "선택됨 · Ctrl+C"; }
