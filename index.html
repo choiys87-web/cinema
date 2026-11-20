@@ -81,12 +81,10 @@ button{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--lin
 button.primary{background:var(--curtain);border-color:var(--curtain);color:var(--on-curtain)}
 button:disabled,input:disabled{opacity:.55;cursor:not-allowed}
 :focus-visible{outline:2px solid var(--marquee);outline-offset:2px}
-#ans{font-size:17px;padding:12px 14px}
-.shake{animation:shake .3s}
-@keyframes shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
-@media (prefers-reduced-motion:reduce){ .shake{animation:none} .bar i{transition:none} }
+#chat{font-size:17px;padding:12px 14px}
+@media (prefers-reduced-motion:reduce){ .bar i{transition:none} }
 .result{margin:0;min-height:1.5em;font-weight:500;overflow-wrap:anywhere}
-.result[data-k="good"]{color:var(--good)} .result[data-k="bad"]{color:var(--bad)}
+.result[data-k="good"]{color:var(--good)}
 .foot{margin:0;font-size:12.5px;color:var(--muted)}
 
 aside{display:flex;flex-direction:column;gap:12px;min-width:0}
@@ -104,11 +102,13 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
 #rank li.me .nm::after{content:" (나)";color:var(--muted);font-size:12px}
 #rank li.host .nm::before{content:"호스트 ";color:var(--curtain);font-size:12px;font-weight:600}
 #rank .empty,#chatList .empty{color:var(--muted);font-size:13px;display:block;padding:6px}
-#chatList{list-style:none;margin:0;padding:0;height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+#chatList{list-style:none;margin:0;padding:10px 12px;height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px}
+@media (max-width:520px){ #chatList{height:160px} }
 #chatList li{overflow-wrap:anywhere;font-size:14px}
 #chatList .n{font-weight:600;margin-right:6px}
 #chatList li.mine .n{color:var(--curtain)}
 #chatList li.sys{color:var(--muted);font-size:12.5px}
+#chatList li.ok .x{color:var(--good);font-weight:600}
 </style>
 </head>
 <body>
@@ -147,13 +147,14 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
           <li id="h2"><span class="hl">힌트 2 · 장르</span><b class="hv">대기 중</b></li>
           <li id="h3"><span class="hl">힌트 3 · 글자 공개</span><b class="hv">대기 중</b></li>
         </ol>
-        <form class="row" id="ansForm" autocomplete="off">
-          <label class="sr" for="ans">정답 입력</label>
-          <input type="text" id="ans" maxlength="60" placeholder="영화 제목을 입력하고 Enter" autocomplete="off" enterkeyhint="send">
-          <button class="primary" id="ansBtn" type="submit">제출</button>
-        </form>
         <p class="result" id="result" role="status"></p>
-        <p class="foot" id="foot">문제당 40초 · 띄어쓰기와 문장부호는 무시합니다 · 부제는 생략해도 정답</p>
+        <ul id="chatList" aria-live="polite" aria-label="채팅"><li class="empty">아직 대화가 없습니다.</li></ul>
+        <form class="row" id="chatForm" autocomplete="off">
+          <label class="sr" for="chat">채팅 · 정답 입력</label>
+          <input type="text" id="chat" maxlength="200" placeholder="채팅하거나 영화 제목을 입력하고 Enter" autocomplete="off" enterkeyhint="send">
+          <button class="primary" id="chatBtn" type="submit">보내기</button>
+        </form>
+        <p class="foot" id="foot">채팅에 제목을 쓰면 정답 처리 · 문제당 40초 · 띄어쓰기와 문장부호는 무시합니다 · 부제는 생략해도 정답</p>
       </section>
     </main>
 
@@ -181,16 +182,6 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       <section class="panel">
         <h2>순위</h2>
         <ol id="rank"><li class="empty">방에 들어가면 참가자가 표시됩니다.</li></ol>
-      </section>
-
-      <section class="panel">
-        <h2>채팅</h2>
-        <ul id="chatList" aria-live="polite"><li class="empty">아직 대화가 없습니다.</li></ul>
-        <form class="row" id="chatForm" autocomplete="off">
-          <label class="sr" for="chat">채팅 메시지</label>
-          <input type="text" id="chat" maxlength="200" placeholder="방에 들어가면 채팅할 수 있습니다" enterkeyhint="send" disabled>
-          <button id="chatBtn" type="submit" disabled>보내기</button>
-        </form>
       </section>
     </aside>
   </div>
@@ -233,7 +224,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   let myPid = ls.get("cq-pid"); if (!myPid) { myPid = rid(10); ls.set("cq-pid", myPid); }
   let myNick = cleanNick(ls.get("cq-nick")) || "관객" + Math.floor(1000 + Math.random() * 9000);
   ls.set("cq-nick", myNick);   // 새로고침해도 같은 이름 유지
-  let wrongUntil = 0, boardKey = "", rankSig = "", chatSig = "", lastChatAt = 0;
+  let boardKey = "", rankSig = "", chatSig = "", lastChatAt = 0;
 
   // 테스트나 자체 중계 서버용: ?signal=host:port
   function peerOpts(){
@@ -286,12 +277,15 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       r.ph = ph; r.lvl = lvl; pushPub();
     } else if (now - lastBeat > 5000) pushPub();
   }
-  function tryGuess(pid, text){
-    const now = Date.now(), r = round; if (!r || phaseOf(r, now) !== "play") return null;
-    const v = norm(text); if (!v) return null;
-    if (v !== r.q.ans && r.q.al.indexOf(v) < 0) return false;
-    const p = players[pid]; r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 3; p.score++; saveRoom();
-    sysChat(p.nick + " 님 정답 · " + r.q.t); pushPub(); return true;
+  // 채팅 한 줄이 곧 답안이다: 문제 진행 중에 정답과 같으면 정답 처리하고, 아니면 그냥 채팅으로 남는다
+  function say(pid, text){
+    const p = players[pid], x = String(text || "").trim().slice(0, 200); if (!p || !x) return;
+    const now = Date.now(), r = round, v = norm(x);
+    const hit = !!(r && v && phaseOf(r, now) === "play" && (v === r.q.ans || r.q.al.indexOf(v) >= 0));
+    const m = { t:now, x, pid, nick:p.nick }; if (hit) m.ok = true; addChat(m);
+    if (!hit) return;
+    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 3; p.score++; saveRoom();
+    sysChat(p.nick + " 님 정답 · " + r.q.t); pushPub();
   }
   function onGuestData(c, d){
     if (!d || typeof d !== "object") return;
@@ -305,10 +299,8 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     const pid = conns.get(c), p = pid && players[pid]; if (!p) return;
     const now = Date.now();
     if (d.t === "nick") { const v = cleanNick(d.nick); if (v) { p.nick = v; saveRoom(); pushPub(); } }
-    else if (d.t === "guess") { if (now - (lastMsg[pid + "g"] || 0) < 120) return; lastMsg[pid + "g"] = now;
-      if (tryGuess(pid, String(d.x || "").slice(0, 60)) === false) { try { c.send({ t:"wrong" }); } catch (e) {} } }
-    else if (d.t === "chat") { const x = String(d.x || "").trim().slice(0, 200); if (!x || now - (lastMsg[pid + "c"] || 0) < 700) return; lastMsg[pid + "c"] = now;
-      addChat({ t:now, x, pid, nick:p.nick }); }
+    else if (d.t === "chat" || d.t === "guess") {   // "guess"는 예전 화면을 아직 열어 둔 참가자용
+      if (now - (lastMsg[pid] || 0) < 200) return; lastMsg[pid] = now; say(pid, d.x); }
   }
   async function loadPool(){
     try { const r = await fetch("pool.json"); const a = await r.json(); if (Array.isArray(a) && a.length > 50) { pool = toPool(a); return true; } } catch (e) { console.warn("pool", e); }
@@ -321,7 +313,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     players[myPid] = { nick: myNick, score: (players[myPid] && players[myPid].score) || 0 };
     enterRoom(); setMode("warn", "방 " + code + " · 방을 여는 중…"); pub = makePub(); render();
     const full = await loadPool();
-    $("foot").textContent = "문제당 " + Q_MS / 1000 + "초 · 띄어쓰기와 문장부호는 무시합니다 · 부제는 생략해도 정답 · " + (full ? "문제 " + pool.length.toLocaleString("ko-KR") + "편" : "문제 목록(pool.json)을 불러오지 못해 예시 " + pool.length + "편으로 진행 중");
+    $("foot").textContent = "채팅에 제목을 쓰면 정답 처리 · 문제당 " + Q_MS / 1000 + "초 · 띄어쓰기와 문장부호는 무시합니다 · 부제는 생략해도 정답 · " + (full ? "문제 " + pool.length.toLocaleString("ko-KR") + "편" : "문제 목록(pool.json)을 불러오지 못해 예시 " + pool.length + "편으로 진행 중");
     startRound(Date.now() + 1500); setInterval(hostTick, 250);
     peer = new Peer(PREFIX + code, peerOpts());
     const label = () => setMode("ok", "방 " + code + " · 호스트 · 이 탭을 열어 두는 동안 게임이 이어집니다");
@@ -354,8 +346,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     c.on("data", d => { if (c !== conn || !d) return; lastHeard = Date.now();
       if (d.t === "welcome") { welcomed = true; pub = d.pub; offset = d.pub.now - Date.now(); chat = Array.isArray(d.chat) ? d.chat : []; setMode("ok", "방 " + code + " · 참가 중"); chatSig = ""; render(); renderChat(); }
       else if (d.t === "pub") { pub = d.pub; offset = d.pub.now - Date.now(); render(); }
-      else if (d.t === "chat") { chat.push(d.m); if (chat.length > KEEP_CHAT) chat.shift(); renderChat(); }
-      else if (d.t === "wrong") { flashWrong(); } });
+      else if (d.t === "chat") { chat.push(d.m); if (chat.length > KEEP_CHAT) chat.shift(); renderChat(); } });
     const lost = () => { if (c !== conn) return; setMode("warn", "방 " + code + " · 호스트와 연결이 끊겼습니다. 다시 연결하는 중…"); retry(3000); };
     c.on("close", lost); c.on("error", lost);
   }
@@ -384,7 +375,6 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   function enterRoom(){
     $("lobby").hidden = true; $("game").hidden = false; $("sharePanel").hidden = false;
     $("link").value = location.href.split("#")[0] + "#" + code;
-    $("chat").disabled = $("chatBtn").disabled = false; $("chat").placeholder = "메시지 입력";
     setInterval(render, 200);
   }
   function hintRow(id, val, shown, left, ph){
@@ -422,7 +412,6 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     const res = $("result"), tail = p.ans ? " · 정답: " + p.ans.t + " (" + p.ans.y + ") · 다음 문제 " + left + "초" : "";
     if (ph === "won" && p.win) { res.dataset.k = "good"; setText(res, (p.win.pid === myPid ? "정답입니다! " : p.win.nick + " 님이 ") + p.win.sec.toFixed(1) + "초 만에 맞혔습니다" + tail); }
     else if (ph === "timeup") { res.dataset.k = ""; setText(res, "시간 초과" + tail); }
-    else if (ph === "play" && Date.now() < wrongUntil) { res.dataset.k = "bad"; setText(res, "오답입니다. 다시 도전하세요."); }
     else { res.dataset.k = ""; setText(res, ""); }
     if (role === "host") setText($("shareTip"), "이 링크를 보내면 누구나 바로 참가합니다. 지금 " + p.here + "명 접속 중.");
     else setText($("shareTip"), "지금 " + p.here + "명 접속 중.");
@@ -436,22 +425,15 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       li.appendChild(el("span", "no", String(i + 1))); li.appendChild(el("span", "nm", p.nick)); li.appendChild(el("span", "sc", String(p.score))); ol.appendChild(li); });
   }
   function renderChat(){
-    const sig = chat.length + ":" + (chat.length ? chat[chat.length - 1].t : 0); if (sig === chatSig) return; chatSig = sig;
+    const last = chat[chat.length - 1], sig = chat.length + ":" + (last ? last.t + ":" + last.x : ""); if (sig === chatSig) return; chatSig = sig;
     const ul = $("chatList"), stick = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 40; ul.textContent = "";
-    if (!chat.length) { ul.appendChild(el("li", "empty", "아직 대화가 없습니다. 먼저 인사를 건네 보세요.")); return; }
-    for (const m of chat) { if (!m || typeof m.x !== "string") continue; const li = el("li", m.sys ? "sys" : m.pid === myPid ? "mine" : "");
+    if (!chat.length) { ul.appendChild(el("li", "empty", "아직 대화가 없습니다. 여기에 영화 제목을 쓰면 정답으로 처리됩니다.")); return; }
+    for (const m of chat) { if (!m || typeof m.x !== "string") continue; const li = el("li", m.sys ? "sys" : (m.pid === myPid ? "mine" : "") + (m.ok ? " ok" : ""));
       if (m.sys) li.textContent = m.x; else { li.appendChild(el("b", "n", String(m.nick || "관객"))); li.appendChild(el("span", "x", m.x)); } ul.appendChild(li); }
     if (stick) ul.scrollTop = ul.scrollHeight;
   }
-  function flashWrong(){ wrongUntil = Date.now() + 1500; const inp = $("ans"); inp.classList.remove("shake"); void inp.offsetWidth; inp.classList.add("shake"); inp.select(); render(); }
 
   // ── 입력 ─────────────────────────────────────────────
-  $("ansForm").addEventListener("submit", e => {
-    e.preventDefault(); const inp = $("ans"), x = inp.value.trim(); if (!x || !pub) return;
-    if (role === "host") { const r = tryGuess(myPid, x); if (r === false) flashWrong(); else inp.value = ""; }
-    else if (pub.ph !== "play" || pub.win) inp.value = "";
-    else if (send({ t:"guess", x })) inp.value = "";
-  });
   $("nickForm").addEventListener("submit", e => {
     e.preventDefault(); const v = cleanNick($("nick").value);
     if (!v) { $("nickTip").textContent = "닉네임을 한 글자 이상 입력하세요."; $("nick").value = myNick; return; }
@@ -460,8 +442,8 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   });
   $("chatForm").addEventListener("submit", e => {
     e.preventDefault(); const inp = $("chat"), x = inp.value.trim().slice(0, 200), now = Date.now();
-    if (!x || !role || now - lastChatAt < 700) return; lastChatAt = now;
-    if (role === "host") { addChat({ t:now, x, pid:myPid, nick:myNick }); inp.value = ""; } else if (send({ t:"chat", x })) inp.value = "";
+    if (!x || !role || now - lastChatAt < 250) return; lastChatAt = now;
+    if (role === "host") { say(myPid, x); inp.value = ""; } else if (send({ t:"chat", x })) inp.value = "";
     const ul = $("chatList"); ul.scrollTop = ul.scrollHeight;
   });
   $("copyBtn").addEventListener("click", async () => {
