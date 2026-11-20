@@ -83,6 +83,15 @@ button{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--lin
 button.primary{background:var(--curtain);border-color:var(--curtain);color:var(--on-curtain)}
 select{flex:1;min-width:0;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px}
 select:disabled{opacity:.75}
+#optHints{display:flex;flex-direction:column;gap:5px}
+.hrow{display:flex;align-items:center;gap:6px;font-size:13.5px}
+.hrow label{flex:1;min-width:0;display:flex;align-items:center;gap:7px}
+.hrow .gap{flex:1;min-width:0;color:var(--muted)}
+.hrow input[type="checkbox"]{width:17px;height:17px;margin:0;flex:none;accent-color:var(--curtain)}
+.hrow input[type="number"]{width:62px;flex:none;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 6px;text-align:right}
+.hrow input:disabled{opacity:.7}
+.hrow.offrow label,.hrow.offrow input[type="number"]{opacity:.5}
+#optReset{align-self:flex-start;font-size:13px;font-weight:500;padding:6px 10px}
 #sndBtn{align-self:flex-start;font-size:13px;font-weight:500;padding:6px 10px}
 #sndBtn[aria-pressed="false"]{color:var(--muted)}
 #rank .fire{color:var(--curtain);font-size:12.5px;font-weight:600;white-space:nowrap}
@@ -129,7 +138,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
    순위·방 링크·닉네임·명예의 전당은 위쪽 버튼으로 넘겨 본다. */
 @media (max-width:700px){
   body{padding:12px 10px 20px}
-  input[type="text"]{font-size:16px}   /* 16px보다 작으면 아이폰이 입력할 때 화면을 확대한다 */
+  input[type="text"],.hrow input[type="number"],select{font-size:16px}   /* 16px보다 작으면 아이폰이 입력할 때 화면을 확대한다 */
   .hints{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
   .hints li{flex-direction:row;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 9px}
   .hints .hn{display:none}
@@ -137,6 +146,8 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   .hints #h5{display:none}
   .hints:not(.no5) #h4.on{display:none}
   .hints:not(.no5) #h4.on + #h5{display:flex}
+  .hints.no4 #h4{display:none}   /* 4단계를 꺼 두었으면 그 자리는 5단계 칸이 쓴다 */
+  .hints.no4 #h5{display:flex}
   .hints .hl{white-space:nowrap}
   .hints .hv{font-size:13.5px;text-align:right}
 
@@ -230,7 +241,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
           <button class="primary" id="chatBtn" type="submit">보내기</button>
           <button id="skipBtn" type="button" title="모르겠으면 패스에 한 표. 접속한 사람의 과반이 누르면 정답을 공개하고 넘어갑니다.">패스</button>
         </form>
-        <p class="foot" id="foot">채팅에 제목을 쓰면 정답 처리 · 모르면 패스 버튼이나 ㅈㅈ(과반이면 넘어감) · 문제당 40초 · 띄어쓰기와 문장부호는 무시합니다 · 간판에 보이는 숫자·영문은 안 써도 정답 · 부제까지 써야 정답</p>
+        <p class="foot" id="foot">채팅에 제목을 쓰면 정답 처리 · 모르면 패스 버튼이나 ㅈㅈ(과반이면 넘어감) · 띄어쓰기와 문장부호는 무시합니다 · 간판에 보이는 숫자·영문은 안 써도 정답 · 부제까지 써야 정답</p>
       </section>
     </main>
 
@@ -254,6 +265,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
           <select id="optLv" disabled></select>
         </div>
         <p class="tip" id="optTip">방장만 바꿀 수 있습니다.</p>
+        <div id="optHints" role="group" aria-label="힌트와 시간"></div>
+        <p class="tip" id="optSum"></p>
+        <button id="optReset" type="button" hidden>힌트·시간 기본값으로</button>
       </section>
 
       <section class="panel">
@@ -285,8 +299,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
 <script>
 (() => {
   // ── 설정 ─────────────────────────────────────────────
-  const Q_MS = 40000;                     // 문제당 제한 시간
-  const HINT_AT = [6000, 12000, 18000, 25000, 32000];  // 힌트 1~5(나라·연도·장르·글자 일부·글자 더) 공개 시점
+  const Q_MS = 40000;                     // 문제당 제한 시간 (기본값. 방장이 방 설정에서 바꿀 수 있다)
+  const HINT_AT = [6000, 12000, 18000, 25000, 32000];  // 힌트 1~5(나라·연도·장르·글자 일부·글자 더) 공개 시점 (기본값)
+  const REVEAL_MS = 6000;                 // 정답 공개 후 다음 문제까지 (기본값)
   const PICK = [1, 0.3, 0.04];            // 한 바퀴에 넣는 비율: 대중적인 영화는 전부, 보통은 30%, 마이너는 4%만 (pool.json의 등급 1·2·3)
   const REVEAL = [0.3, 0.7];              // 글자 힌트로 보여 주는 한글 글자 비율: 4단계 약 30%, 5단계 최대 70%
   const SLOT_MS = 30 * 60 * 1000;         // 명예의 전당 구간 길이: 이 시간마다 점수를 초기화하고 왕을 기록한다
@@ -294,8 +309,20 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   // 방 설정(방장이 고른다): 문제 범위와 난이도. 난이도는 등급 1·2·3(대중적·보통·마이너)을 한 바퀴에 넣는 비율이다.
   const CATS = { all: ["전체", q => true], kr: ["한국 영화", q => q.c === "한국"], world: ["외국 영화", q => q.c !== "한국"], ani: ["애니메이션", q => q.g === "애니메이션"] };
   const LEVELS = { easy: ["쉬움", [1, 0, 0], "유명한 영화만 나옵니다."], normal: ["보통", PICK, "마이너한 영화는 드물게 나옵니다."], hard: ["어려움", [1, 1, 1], "마이너한 영화도 똑같이 나옵니다."] };
+  // 힌트·시간 설정: 힌트마다 켜기/끄기와 "앞 단계 뒤 몇 초"(h), 마지막 힌트 뒤 남는 시간(tail), 정답 공개 시간(rev). 단위는 초.
+  const HINT_NAMES = ["나라", "연도", "장르", "글자 일부", "글자 더"];
+  const DEF_TIMING = { h: HINT_AT.map((t, i) => [true, Math.round((t - (i ? HINT_AT[i - 1] : 0)) / 1000)]), tail: Math.round((Q_MS - HINT_AT[HINT_AT.length - 1]) / 1000), rev: Math.round(REVEAL_MS / 1000) };
+  const clampInt = (v, lo, hi, d) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  function cleanOpt(o){   // 저장된 값·입력값·예전 형식을 안전한 범위로 맞춘다
+    o = o || {}; const h = Array.isArray(o.h) ? o.h : [];
+    return { cat: CATS[o.cat] ? o.cat : "all", lv: LEVELS[o.lv] ? o.lv : "normal",
+      h: DEF_TIMING.h.map((d, i) => [Array.isArray(h[i]) ? h[i][0] !== false : true, clampInt(Array.isArray(h[i]) && h[i][1] != null ? h[i][1] : d[1], 1, 60, d[1])]),
+      tail: clampInt(o.tail == null ? DEF_TIMING.tail : o.tail, 3, 60, DEF_TIMING.tail), rev: clampInt(o.rev == null ? DEF_TIMING.rev : o.rev, 3, 30, DEF_TIMING.rev) };
+  }
+  function timingOf(o){   // → 힌트별 공개 시각(ms, 꺼 둔 힌트는 null) · 문제 길이 · 정답 공개 길이. 꺼 둔 힌트의 시간은 빠진다.
+    let t = 0; const at = o.h.map(x => x[0] ? (t += x[1] * 1000) : null); return { at, dur: t + o.tail * 1000, rev: o.rev * 1000 };
+  }
   const SKIP_WORDS = ["ㅈㅈ", "패스", "스킵", "넘겨", "pass", "skip"];   // 채팅에 이 말만 치면 패스 한 표
-  const REVEAL_MS = 6000;                 // 정답 공개 후 다음 문제까지
   const KEEP_CHAT = 60;
   const PREFIX = "choseong-cinema-";      // 방 코드 앞에 붙는 연결용 이름
   const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -326,7 +353,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   let myPid = ls.get("cq-pid"); if (!myPid) { myPid = rid(10); ls.set("cq-pid", myPid); }
   let myNick = cleanNick(ls.get("cq-nick")) || "관객" + Math.floor(1000 + Math.random() * 9000);
   ls.set("cq-nick", myNick);   // 새로고침해도 같은 이름 유지
-  let boardKey = "", rankSig = "", chatSig = "", hallSig = "", lastChatAt = 0, sndKey = "";
+  let boardKey = "", rankSig = "", chatSig = "", hallSig = "", lastChatAt = 0, sndKey = "", optDirty = false, optTimer = null;
   // 효과음: 파일 없이 브라우저에서 바로 만든 짧은 음. 기기마다 켜고 끌 수 있다.
   let sndOn = ls.get("cq-snd") !== "0", actx = null;
   const SND = { mine: [[784, 0, .12], [988, .1, .12], [1319, .2, .3]], other: [[659, 0, .12], [523, .11, .22]], out: [[330, 0, .14], [247, .13, .28]], next: [[880, 0, .07]] };
@@ -358,7 +385,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   const lastMsg = {};                 // pid → 마지막 수신 시각(도배 방지)
   let slot = 0, hall = [];            // 지금 구간 번호, 명예의 전당 [{s:구간 시작 시각, nick, n:맞힌 수, ids:왕의 pid들}]
   let streak = { pid: "", n: 0 };     // 연속 정답 중인 사람
-  let opt = { cat: "all", lv: "normal" };   // 방 설정
+  let opt = cleanOpt(null);           // 방 설정: 범위·난이도·힌트·시간
   const slotOf = t => Math.floor(t / SLOT_MS);
 
   const online = pid => pid === myPid || Array.from(conns.values()).indexOf(pid) >= 0;
@@ -380,9 +407,10 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     for (const k of ids) players[k].score = 0;
     return e;
   }
-  const phaseOf = (r, now) => now < r.start ? "wait" : r.win ? "won" : now < r.start + Q_MS ? "play" : "timeup";
-  const nextStart = r => (r.win ? r.win.at : r.start + Q_MS) + REVEAL_MS;
-  function levelOf(r, now, ph){ if (ph === "won" || ph === "timeup") return 5; if (ph !== "play") return 0; const e = now - r.start; let l = 0; while (l < HINT_AT.length && e >= HINT_AT[l]) l++; return l; }
+  const phaseOf = (r, now) => now < r.start ? "wait" : r.win ? "won" : now < r.start + r.dur ? "play" : "timeup";
+  const nextStart = r => (r.win ? r.win.at : r.start + r.dur) + r.rev;
+  // 지금까지 공개된 힌트 수 (문제가 끝났으면 9)
+  function levelOf(r, now, ph){ if (ph === "won" || ph === "timeup") return 9; if (ph !== "play") return 0; const e = now - r.start; return r.at.filter(t => t != null && e >= t).length; }
   // 글자 힌트 두 단계: 초성 중 일부를 원래 글자로 바꿔 보여 준다. 5단계는 4단계에서 보인 글자에 더 얹는다.
   // 공개 순서는 가운데 글자들(무작위) → 끝 글자 → 첫 글자. 한글이 2글자뿐이면 5단계는 없다(null).
   function letterHints(t){
@@ -400,7 +428,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       const fit = pool.map((_, i) => i).filter(i => CATS[opt.cat][1](pool[i])), w = LEVELS[opt.lv][1];   // 방 설정의 범위 → 난이도 순으로 거른다
       order = fit.filter(i => Math.random() < w[pool[i].k - 1]); if (!order.length) order = fit.length ? fit : pool.map((_, i) => i);
       for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; } cursor = 0; }
-    round = { q: pool[order[cursor++]], start: at, win: null, ph: "wait", lvl: 0, skip: {}, passed: false }; round.lh = letterHints(round.q.t); roundNo++; saveRoom(); pushPub();
+    round = { q: pool[order[cursor++]], start: at, win: null, ph: "wait", lvl: 0, skip: {}, passed: false }; Object.assign(round, timingOf(opt)); round.lh = letterHints(round.q.t); roundNo++; saveRoom(); pushPub();
   }
   function makePub(){
     const now = Date.now(), r = round;
@@ -412,8 +440,10 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     const pubHall = hall.map(e => ({ s: e.s, nick: e.nick, n: e.n }));
     if (!r) return { code, now, ph:"load", players:list, here: list.filter(p => p.on).length, slotEnd, hall: pubHall, opt };
     const ph = phaseOf(r, now), lvl = levelOf(r, now, ph), over = ph === "won" || ph === "timeup", q = r.q;
-    return { code, now, ph, start:r.start, dur:Q_MS, hintAt:HINT_AT, next:nextStart(r), no:roundNo,
-      cho: chosung(q.t), hints: [lvl >= 1 ? q.c : null, lvl >= 2 ? q.y + "년" : null, lvl >= 3 ? q.g : null, lvl >= 4 ? r.lh[0] : null, lvl >= 5 ? r.lh[1] : null], no5: !r.lh[1],
+    const el = now - r.start, vals = [q.c, q.y + "년", q.g, r.lh[0], r.lh[1]];
+    const shown = i => over || (ph === "play" && r.at[i] != null && el >= r.at[i]);   // 꺼 둔 힌트는 정답 공개 때만 보인다
+    return { code, now, ph, start:r.start, dur:r.dur, hintAt:r.at, next:nextStart(r), no:roundNo,
+      cho: chosung(q.t), hints: vals.map((v, i) => shown(i) ? v : null), no5: !r.lh[1],
       win: r.win ? { pid:r.win.pid, nick:r.win.nick, sec: (r.win.at - r.start) / 1000 } : null,
       skip: ph === "play" ? skipState(r) : null, passed: r.passed, streak: streak.n >= 2 ? streak : null, opt,
       ans: over ? { t:q.t, y:q.y } : null, players:list, here: list.filter(p => p.on).length, slotEnd, hall: pubHall };   // 정답은 공개 단계에서만 내보낸다
@@ -445,7 +475,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     // 정답 순간: 걸린 시간, 힌트 없이 맞혔는지, 몇 문제 연속인지 같이 알린다
     const tags = [((now - r.start) / 1000).toFixed(1) + "초"]; if (levelOf(r, now, "play") === 0) tags.push("노힌트");
     streak = streak.pid === pid ? { pid, n: streak.n + 1 } : { pid, n: 1 }; if (streak.n >= 2) tags.push(streak.n + "연속");
-    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 5; p.score++; saveRoom();
+    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 9; p.score++; saveRoom();
     sysChat(p.nick + " 님 정답 · " + r.q.t + " (" + tags.join(" · ") + ")"); pushPub();
   }
   // 패스 투표: 접속한 사람의 과반이 패스하면 시간을 끝까지 기다리지 않고 정답을 공개한다
@@ -453,12 +483,13 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   function voteSkip(pid){
     const r = round, now = Date.now(); if (!r || !players[pid] || phaseOf(r, now) !== "play") return;
     r.skip[pid] = true; const st = skipState(r);
-    if (st.n >= st.need) { r.passed = true; r.start = now - Q_MS; hostTick(); } else pushPub();   // 시작 시각을 당겨 '시간 초과'와 같은 길로 넘긴다
+    if (st.n >= st.need) { r.passed = true; r.start = now - r.dur; hostTick(); } else pushPub();   // 시작 시각을 당겨 '시간 초과'와 같은 길로 넘긴다
   }
-  function setOpt(cat, lv){
-    if (!CATS[cat] || !LEVELS[lv] || (cat === opt.cat && lv === opt.lv)) return;
-    opt = { cat, lv }; cursor = order.length; saveRoom();   // 다음 문제부터 새 설정으로 다시 추린다
-    sysChat("방 설정 변경 · " + CATS[cat][0] + " · " + LEVELS[lv][0] + " (다음 문제부터)"); pushPub();
+  function setOpt(next){
+    next = cleanOpt(next); if (JSON.stringify(next) === JSON.stringify(opt)) return;
+    if (next.cat !== opt.cat || next.lv !== opt.lv) cursor = order.length;   // 범위·난이도가 바뀌면 다음 문제부터 다시 추린다
+    opt = next; saveRoom(); const on = opt.h.map((x, i) => x[0] ? HINT_NAMES[i] : null).filter(Boolean);
+    sysChat("방 설정 변경 · " + CATS[opt.cat][0] + " · " + LEVELS[opt.lv][0] + " · 힌트 " + (on.length ? on.join("·") : "없음") + " · 문제당 " + timingOf(opt).dur / 1000 + "초 (다음 문제부터)"); pushPub();
   }
   function onGuestData(c, d){
     if (!d || typeof d !== "object") return;
@@ -485,13 +516,13 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     if (saved && saved.players) for (const k of Object.keys(saved.players)) players[k] = { nick: cleanNick(saved.players[k].nick) || "관객", score: Number(saved.players[k].score) || 0 };
     if (saved && saved.roundNo) roundNo = Number(saved.roundNo) || 0;
     if (saved && Array.isArray(saved.hall)) hall = saved.hall.filter(e => e && typeof e.nick === "string").map(e => ({ s: Number(e.s) || 0, nick: e.nick.slice(0, 80), n: Number(e.n) || 0, ids: Array.isArray(e.ids) ? e.ids.map(String).slice(0, 50) : [] })).slice(-KEEP_HALL);
-    if (saved && saved.opt && CATS[saved.opt.cat] && LEVELS[saved.opt.lv]) opt = { cat: saved.opt.cat, lv: saved.opt.lv };
+    if (saved && saved.opt) opt = cleanOpt(saved.opt);
     slot = (saved && Number(saved.slot)) || slotOf(Date.now());
     if (slot !== slotOf(Date.now())) { closeSlot(); slot = slotOf(Date.now()); }   // 방을 닫아 둔 사이 구간이 지났으면 그때 점수로 왕을 정한다
     players[myPid] = { nick: myNick, score: (players[myPid] && players[myPid].score) || 0 };
     enterRoom(); setMode("warn", "방 " + code + " · 방을 여는 중…"); pub = makePub(); render();
     const full = await loadPool();
-    $("foot").textContent = "채팅에 제목을 쓰면 정답 처리 · 모르면 패스 버튼이나 ㅈㅈ(과반이면 넘어감) · 문제당 " + Q_MS / 1000 + "초 · 띄어쓰기와 문장부호는 무시합니다 · 간판에 보이는 숫자·영문은 안 써도 정답 · 부제까지 써야 정답 · " + (full ? "문제 " + pool.length.toLocaleString("ko-KR") + "편" : "문제 목록(pool.json)을 불러오지 못해 예시 " + pool.length + "편으로 진행 중");
+    $("foot").textContent = "채팅에 제목을 쓰면 정답 처리 · 모르면 패스 버튼이나 ㅈㅈ(과반이면 넘어감) · 띄어쓰기와 문장부호는 무시합니다 · 간판에 보이는 숫자·영문은 안 써도 정답 · 부제까지 써야 정답 · " + (full ? "문제 " + pool.length.toLocaleString("ko-KR") + "편" : "문제 목록(pool.json)을 불러오지 못해 예시 " + pool.length + "편으로 진행 중");
     startRound(Date.now() + 1500); setInterval(hostTick, 250);
     peer = new Peer(PREFIX + code, peerOpts());
     const label = () => setMode("ok", "방 " + code + " · 호스트 · 이 탭을 열어 두는 동안 게임이 이어집니다");
@@ -499,7 +530,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     peer.on("connection", c => {
       c.on("data", d => { try { onGuestData(c, d); } catch (e) { console.error(e); } });
       const drop = () => { if (!conns.delete(c)) return; const r = round;   // 나간 사람 때문에 과반이 채워졌으면 바로 넘긴다
-        if (r && phaseOf(r, Date.now()) === "play") { const st = skipState(r); if (st.n >= st.need) { r.passed = true; r.start = Date.now() - Q_MS; hostTick(); return; } }
+        if (r && phaseOf(r, Date.now()) === "play") { const st = skipState(r); if (st.n >= st.need) { r.passed = true; r.start = Date.now() - r.dur; hostTick(); return; } }
         pushPub(); };
       c.on("close", drop); c.on("error", drop);
     });
@@ -555,8 +586,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   function enterRoom(){
     $("lobby").hidden = true; $("game").hidden = false; $("sharePanel").hidden = false;
     document.body.classList.add("inroom"); $("viewBtn").hidden = false; setView("game");
-    $("optPanel").hidden = false; $("optCat").disabled = $("optLv").disabled = role !== "host";
-    setText($("optTip"), role === "host" ? "바꾸면 다음 문제부터 적용됩니다." : "방장만 바꿀 수 있습니다.");
+    $("optPanel").hidden = false; $("optReset").hidden = role !== "host";
+    for (const c of $("optPanel").querySelectorAll("select, input")) c.disabled = role !== "host";
+    showOpt(cleanOpt(null));
     $("link").value = location.href.split("#")[0] + "#" + code;
     setInterval(render, 200);
   }
@@ -574,9 +606,22 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     if (window.scrollY || (vv && vv.offsetTop)) window.scrollTo(0, 0);   // 아이폰이 입력칸을 보이려고 화면을 밀어 올린 것을 되돌린다
     const ul = $("chatList"); ul.scrollTop = ul.scrollHeight;
   }
-  function hintRow(id, val, shown, left, ph){
+  function hintRow(id, val, shown, at, el_, ph){   // at이 null이면 방장이 꺼 둔 힌트
     const li = $(id), on = val != null; li.classList.toggle("on", on);
-    setText(li.querySelector(".hv"), on ? shown : ph === "play" ? Math.max(1, Math.ceil(left / 1000)) + "초 뒤 공개" : "대기 중");
+    setText(li.querySelector(".hv"), on ? shown : at == null ? "꺼짐" : ph === "play" ? Math.max(1, Math.ceil((at - el_) / 1000)) + "초 뒤 공개" : "대기 중");
+  }
+  // 방 설정 칸에 값을 채운다 / 칸에서 값을 읽는다
+  function showOpt(o){
+    const put = (c, v, key) => { if (document.activeElement !== c && c[key] !== v) c[key] = v; };
+    put($("optCat"), o.cat, "value"); put($("optLv"), o.lv, "value");
+    o.h.forEach((x, i) => { put($("hOn" + i), x[0], "checked"); put($("hSec" + i), String(x[1]), "value"); $("hOn" + i).closest(".hrow").classList.toggle("offrow", !x[0]); });
+    put($("optTail"), String(o.tail), "value"); put($("optRev"), String(o.rev), "value");
+    setText($("optTip"), LEVELS[o.lv][2] + (role === "host" ? " 바꾸면 다음 문제부터 적용됩니다." : " 방장만 바꿀 수 있습니다."));
+    setText($("optSum"), "숫자는 앞 단계 뒤에 기다리는 시간(초)입니다. 끈 힌트의 시간은 빠집니다. 문제당 합계 " + timingOf(o).dur / 1000 + "초.");
+  }
+  function readOpt(){
+    const num = id => $(id).value === "" ? null : $(id).value;
+    return cleanOpt({ cat: $("optCat").value, lv: $("optLv").value, h: HINT_NAMES.map((_, i) => [$("hOn" + i).checked, num("hSec" + i)]), tail: num("optTail"), rev: num("optRev") });
   }
   function render(){
     if (!pub) return; renderRank(); renderHall();
@@ -589,21 +634,20 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     const left = Math.max(0, Math.ceil(((ph === "play" ? p.start + p.dur : ph === "wait" ? p.start : p.next) - now) / 1000));
     setText($("clock"), String(left)); $("clock").classList.toggle("hot", ph === "play" && left <= 5);
     $("skipBtn").disabled = ph !== "play";
-    if (p.opt) { for (const [id, v] of [["optCat", p.opt.cat], ["optLv", p.opt.lv]]) { const sel = $(id); if (document.activeElement !== sel && sel.value !== v) sel.value = v; }
-      if (LEVELS[p.opt.lv]) setText($("optTip"), LEVELS[p.opt.lv][2] + (role === "host" ? " 바꾸면 다음 문제부터 적용됩니다." : " 방장만 바꿀 수 있습니다.")); }
+    if (p.opt && !optDirty) showOpt(cleanOpt(p.opt));   // 방장이 고치는 중에는 덮어쓰지 않는다
     // 단계가 바뀌는 순간에만 효과음 (방에 막 들어온 순간은 건너뛴다)
     const sk = p.start + ":" + ph;
     if (sk !== sndKey) { const first = !sndKey; sndKey = sk;
       if (!first) { if (ph === "won") tone(p.win && p.win.pid === myPid ? SND.mine : SND.other); else if (ph === "timeup") tone(SND.out); else if (ph === "play") tone(SND.next); } }
     $("barfill").style.transform = "scaleX(" + (ph === "play" ? Math.max(0, 1 - el_ / p.dur) : ph === "wait" ? 1 : 0) + ")";
     setText($("status"), ph === "wait" ? "다음 문제 준비 중" : ph === "play" ? p.no + "번째 문제 · 이 영화의 제목은?" : "정답 공개");
-    hintRow("h1", p.hints[0], p.hints[0], p.hintAt[0] - el_, ph);
-    hintRow("h2", p.hints[1], p.hints[1], p.hintAt[1] - el_, ph);
-    hintRow("h3", p.hints[2], p.hints[2], p.hintAt[2] - el_, ph);
-    hintRow("h4", p.hints[3], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[3] - el_, ph);
-    $("hints").classList.toggle("no5", !!p.no5);
-    if (p.no5) { $("h5").classList.remove("on"); setText($("h5").querySelector(".hv"), "없음 (2글자)"); }   // 한글 2글자 제목은 5단계 힌트를 주지 않는다
-    else hintRow("h5", p.hints[4], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[4] - el_, ph);
+    hintRow("h1", p.hints[0], p.hints[0], p.hintAt[0], el_, ph);
+    hintRow("h2", p.hints[1], p.hints[1], p.hintAt[1], el_, ph);
+    hintRow("h3", p.hints[2], p.hints[2], p.hintAt[2], el_, ph);
+    hintRow("h4", p.hints[3], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[3], el_, ph);
+    $("hints").classList.toggle("no4", p.hintAt[3] == null); $("hints").classList.toggle("no5", !!p.no5 || p.hintAt[4] == null);
+    if (p.no5 && p.hintAt[4] != null) { $("h5").classList.remove("on"); setText($("h5").querySelector(".hv"), "없음 (2글자)"); }   // 한글 2글자 제목은 5단계 힌트를 주지 않는다
+    else hintRow("h5", p.hints[4], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[4], el_, ph);
     // 간판
     const lvl = p.ans ? 3 : p.hints[4] ? 2 : p.hints[3] ? 1 : 0, str = lvl === 3 ? p.ans.t : lvl === 2 ? p.hints[4] : lvl === 1 ? p.hints[3] : p.cho;
     const key = p.start + ":" + lvl + ":" + (ph === "wait");
@@ -675,7 +719,18 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   for (const [id, table] of [["optCat", CATS], ["optLv", LEVELS]]) { const sel = $(id);
     for (const k of Object.keys(table)) { const o = document.createElement("option"); o.value = k; o.textContent = (id === "optCat" ? "범위: " : "난이도: ") + table[k][0]; sel.appendChild(o); }
     sel.value = id === "optCat" ? "all" : "normal";
-    sel.addEventListener("change", () => { if (role === "host") setOpt($("optCat").value, $("optLv").value); }); }
+  }
+  // 힌트별 켜기/끄기와 구간별 시간 칸
+  { const box = $("optHints");
+    const numRow = (id, text) => { const row = el("div", "hrow"); row.appendChild(el("span", "gap", text)); const n = document.createElement("input"); n.type = "number"; n.id = id; n.min = "3"; n.max = id === "optRev" ? "30" : "60"; n.inputMode = "numeric"; n.setAttribute("aria-label", text + " (초)"); row.appendChild(n); row.appendChild(el("span", "", "초")); return row; };
+    HINT_NAMES.forEach((name, i) => { const row = el("div", "hrow"), lab = document.createElement("label"), cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "hOn" + i;
+      lab.appendChild(cb); lab.appendChild(el("span", "", "힌트 " + (i + 1) + " · " + name)); row.appendChild(lab);
+      const n = document.createElement("input"); n.type = "number"; n.id = "hSec" + i; n.min = "1"; n.max = "60"; n.inputMode = "numeric"; n.setAttribute("aria-label", "힌트 " + (i + 1) + " 앞에서 기다리는 시간(초)"); row.appendChild(n); row.appendChild(el("span", "", "초")); box.appendChild(row); });
+    box.appendChild(numRow("optTail", "마지막 힌트 뒤 남는 시간")); box.appendChild(numRow("optRev", "정답 공개 시간")); }
+  // 고칠 때마다 바로 보내지 않고, 손을 뗀 뒤 잠깐 기다렸다가 한 번에 적용한다 (채팅 안내가 줄줄이 뜨지 않게)
+  const applyOpt = () => { clearTimeout(optTimer); if (role !== "host") return; const o = readOpt(); optDirty = false; setOpt(o); showOpt(o); };
+  $("optPanel").addEventListener("change", () => { if (role !== "host") return; optDirty = true; clearTimeout(optTimer); optTimer = setTimeout(applyOpt, 900); });
+  $("optReset").addEventListener("click", () => { if (role !== "host") return; clearTimeout(optTimer); optDirty = false; const o = cleanOpt({ cat: $("optCat").value, lv: $("optLv").value }); setOpt(o); showOpt(o); });
   // 효과음 켜고 끄기 + 첫 클릭·키 입력 때 소리 낼 준비 (브라우저는 사용자 동작 뒤에만 소리를 허용한다)
   const sndLabel = () => { const b = $("sndBtn"); b.textContent = sndOn ? "효과음 켜짐" : "효과음 꺼짐"; b.setAttribute("aria-pressed", sndOn ? "true" : "false"); };
   $("sndBtn").addEventListener("click", () => { sndOn = !sndOn; ls.set("cq-snd", sndOn ? "1" : "0"); sndLabel(); if (sndOn) { unlockSound(); setTimeout(() => tone(SND.mine), 60); } });
