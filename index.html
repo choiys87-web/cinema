@@ -67,7 +67,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
 .tile.done{background:var(--tile-ink);color:var(--tile);border-color:var(--tile-ink)}
 .board .note{color:var(--tile-ink);opacity:.75;font-size:15px;text-align:center}
 
-.hints{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.hints{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
 .hints li{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .hints .hl{font-size:12px;color:var(--muted);letter-spacing:.02em}
 .hints .hv{font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -126,6 +126,10 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   .hints{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
   .hints li{flex-direction:row;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 9px}
   .hints .hn{display:none}
+  /* 글자 힌트 두 칸은 한 자리를 같이 쓴다: 4단계가 공개되면 그 자리에 5단계 칸이 나온다 */
+  .hints #h5{display:none}
+  .hints:not(.no5) #h4.on{display:none}
+  .hints:not(.no5) #h4.on + #h5{display:flex}
   .hints .hl{white-space:nowrap}
   .hints .hv{font-size:13.5px;text-align:right}
 
@@ -147,7 +151,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   html.shell .game{flex:1;min-height:0;gap:7px;overflow-y:auto}
   html.shell .meta #status{font-size:14px}
   html.shell .meta #clock{font-size:22px}
-  html.shell .marquee{padding:7px 8px}
+  html.shell .marquee{padding:7px 8px;flex:0 1 auto;min-height:46px;overflow-y:auto}   /* 자리가 모자라면 간판이 줄어들고, 입력칸은 항상 화면 안에 남는다 */
   html.shell .board{min-height:76px;padding:9px 2px;gap:7px 12px}
   html.shell .word{gap:4px}
   html.shell .result{min-height:0;font-size:13px;line-height:1.4}
@@ -158,7 +162,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
 
   /* 키보드가 올라왔거나 가로로 눕힌 낮은 화면: 머리줄과 장식을 접어 채팅 자리를 남긴다 */
   html.shell.tight body{padding:5px}
-  html.shell.tight .top,html.shell.tight .bulbs{display:none}
+  html.shell.tight .top,html.shell.tight .bulbs,html.shell.tight .bar{display:none}
   html.shell.tight .stage{padding:8px}
   html.shell.tight .game{gap:5px}
   html.shell.tight .board{min-height:50px;padding:6px 2px;gap:5px 10px}
@@ -202,11 +206,12 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
           <div class="board" id="board" data-size="L" aria-live="polite"><span class="note">방에 연결하는 중입니다</span></div>
           <div class="bulbs" aria-hidden="true"></div>
         </div>
-        <ol class="hints">
+        <ol class="hints" id="hints">
           <li id="h1"><span class="hl"><span class="hn">힌트 1 · </span>나라</span><b class="hv">대기 중</b></li>
           <li id="h2"><span class="hl"><span class="hn">힌트 2 · </span>연도</span><b class="hv">대기 중</b></li>
           <li id="h3"><span class="hl"><span class="hn">힌트 3 · </span>장르</span><b class="hv">대기 중</b></li>
-          <li id="h4"><span class="hl"><span class="hn">힌트 4 · </span>글자<span class="hn"> 공개</span></span><b class="hv">대기 중</b></li>
+          <li id="h4"><span class="hl"><span class="hn">힌트 4 · </span>글자<span class="hn"> 일부</span></span><b class="hv">대기 중</b></li>
+          <li id="h5"><span class="hl"><span class="hn">힌트 5 · </span>글자 더</span><b class="hv">대기 중</b></li>
         </ol>
         <p class="result" id="result" role="status"></p>
         <ul id="chatList" aria-live="polite" aria-label="채팅"><li class="empty">아직 대화가 없습니다.</li></ul>
@@ -259,7 +264,8 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
 (() => {
   // ── 설정 ─────────────────────────────────────────────
   const Q_MS = 40000;                     // 문제당 제한 시간
-  const HINT_AT = [8000, 16000, 24000, 32000];  // 힌트 1·2·3·4(나라·연도·장르·글자) 공개 시점
+  const HINT_AT = [6000, 12000, 18000, 25000, 32000];  // 힌트 1~5(나라·연도·장르·글자 일부·글자 더) 공개 시점
+  const REVEAL = [0.3, 0.7];              // 글자 힌트로 보여 주는 한글 글자 비율: 4단계 약 30%, 5단계 최대 70%
   const SLOT_MS = 30 * 60 * 1000;         // 명예의 전당 구간 길이: 이 시간마다 점수를 초기화하고 왕을 기록한다
   const KEEP_HALL = 24;                   // 명예의 전당에 남기는 구간 수
   const REVEAL_MS = 6000;                 // 정답 공개 후 다음 문제까지
@@ -285,7 +291,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     ["이웃집 토토로",1988,"일본","애니메이션","ㅇㅇㅈ 토ㅌㄹ",""],["살인의 추억",2003,"한국","범죄","ㅅ인ㅇ ㅊㅇ",""],["인터스텔라",2014,"미국","SF","ㅇㅌ스ㅌㄹ",""],
     ["극한직업",2019,"한국","코미디","ㄱ한ㅈㅇ",""],["어벤져스",2012,"미국","액션","ㅇ벤ㅈㅅ",""],["러브레터",1995,"일본","로맨스","ㄹ브ㄹㅌ",""],
     ["범죄도시",2017,"한국","액션","ㅂㅈ도ㅅ",""],["겨울왕국",2013,"미국","애니메이션","ㄱ울ㅇㄱ",""],["부산행",2016,"한국","액션","ㅂ산ㅎ",""]];
-  const toPool = a => a.map(r => ({ t:r[0], y:r[1], c:r[2], g:r[3], h:r[4], ans:norm(r[0]) }));   // 정답은 제목 전체만 인정한다 (부제를 뺀 앞 제목은 인정하지 않음)
+  const toPool = a => a.map(r => ({ t:r[0], y:r[1], c:r[2], g:r[3], ans:norm(r[0]) }));   // 정답은 제목 전체만 인정한다 (부제를 뺀 앞 제목은 인정하지 않음)
 
   // ── 공통 상태 ────────────────────────────────────────
   let role = null, code = null, peer = null;
@@ -332,11 +338,22 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   }
   const phaseOf = (r, now) => now < r.start ? "wait" : r.win ? "won" : now < r.start + Q_MS ? "play" : "timeup";
   const nextStart = r => (r.win ? r.win.at : r.start + Q_MS) + REVEAL_MS;
-  function levelOf(r, now, ph){ if (ph === "won" || ph === "timeup") return 4; if (ph !== "play") return 0; const e = now - r.start; return e >= HINT_AT[3] ? 4 : e >= HINT_AT[2] ? 3 : e >= HINT_AT[1] ? 2 : e >= HINT_AT[0] ? 1 : 0; }
+  function levelOf(r, now, ph){ if (ph === "won" || ph === "timeup") return 5; if (ph !== "play") return 0; const e = now - r.start; let l = 0; while (l < HINT_AT.length && e >= HINT_AT[l]) l++; return l; }
+  // 글자 힌트 두 단계: 초성 중 일부를 원래 글자로 바꿔 보여 준다. 5단계는 4단계에서 보인 글자에 더 얹는다.
+  // 공개 순서는 가운데 글자들(무작위) → 끝 글자 → 첫 글자. 한글이 2글자뿐이면 5단계는 없다(null).
+  function letterHints(t){
+    const chars = Array.from(t), idx = []; chars.forEach((c, i) => { if (isH(c)) idx.push(i); });
+    const n = idx.length, mid = idx.slice(1, n >= 3 ? -1 : undefined);
+    for (let i = mid.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = mid[i]; mid[i] = mid[j]; mid[j] = x; }
+    const seq = mid.concat(n >= 3 ? [idx[n - 1]] : [], n ? [idx[0]] : []);
+    const k4 = Math.min(Math.max(0, n - 1), Math.max(1, Math.round(n * REVEAL[0]))), k5 = Math.min(n - 1, Math.floor(n * REVEAL[1] + 1e-9));
+    const show = k => { const on = new Set(seq.slice(0, k)); return chars.map((c, i) => on.has(i) || !isH(c) ? c : cho(c)).join(""); };
+    return [show(k4), k5 > k4 ? show(k5) : null];
+  }
 
   function startRound(at){
     if (cursor >= order.length) { order = pool.map((_, i) => i); for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; } cursor = 0; }
-    round = { q: pool[order[cursor++]], start: at, win: null, ph: "wait", lvl: 0 }; roundNo++; saveRoom(); pushPub();
+    round = { q: pool[order[cursor++]], start: at, win: null, ph: "wait", lvl: 0 }; round.lh = letterHints(round.q.t); roundNo++; saveRoom(); pushPub();
   }
   function makePub(){
     const now = Date.now(), r = round;
@@ -347,7 +364,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     if (!r) return { code, now, ph:"load", players:list, here: list.filter(p => p.on).length, slotEnd, hall };
     const ph = phaseOf(r, now), lvl = levelOf(r, now, ph), over = ph === "won" || ph === "timeup", q = r.q;
     return { code, now, ph, start:r.start, dur:Q_MS, hintAt:HINT_AT, next:nextStart(r), no:roundNo,
-      cho: chosung(q.t), hints: [lvl >= 1 ? q.c : null, lvl >= 2 ? q.y + "년" : null, lvl >= 3 ? q.g : null, lvl >= 4 ? q.h : null],
+      cho: chosung(q.t), hints: [lvl >= 1 ? q.c : null, lvl >= 2 ? q.y + "년" : null, lvl >= 3 ? q.g : null, lvl >= 4 ? r.lh[0] : null, lvl >= 5 ? r.lh[1] : null], no5: !r.lh[1],
       win: r.win ? { pid:r.win.pid, nick:r.win.nick, sec: (r.win.at - r.start) / 1000 } : null,
       ans: over ? { t:q.t, y:q.y } : null, players:list, here: list.filter(p => p.on).length, slotEnd, hall };   // 정답은 공개 단계에서만 내보낸다
   }
@@ -375,7 +392,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     const hit = !!(r && v && phaseOf(r, now) === "play" && isAnswer(v, r.q.ans));
     const m = { t:now, x, pid, nick:p.nick }; if (hit) m.ok = true; addChat(m);
     if (!hit) return;
-    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 4; p.score++; saveRoom();
+    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 5; p.score++; saveRoom();
     sysChat(p.nick + " 님 정답 · " + r.q.t); pushPub();
   }
   function onGuestData(c, d){
@@ -506,8 +523,11 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     hintRow("h2", p.hints[1], p.hints[1], p.hintAt[1] - el_, ph);
     hintRow("h3", p.hints[2], p.hints[2], p.hintAt[2] - el_, ph);
     hintRow("h4", p.hints[3], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[3] - el_, ph);
+    $("hints").classList.toggle("no5", !!p.no5);
+    if (p.no5) { $("h5").classList.remove("on"); setText($("h5").querySelector(".hv"), "없음 (2글자)"); }   // 한글 2글자 제목은 5단계 힌트를 주지 않는다
+    else hintRow("h5", p.hints[4], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[4] - el_, ph);
     // 간판
-    const lvl = p.ans ? 2 : p.hints[3] ? 1 : 0, str = lvl === 2 ? p.ans.t : lvl === 1 ? p.hints[3] : p.cho;
+    const lvl = p.ans ? 3 : p.hints[4] ? 2 : p.hints[3] ? 1 : 0, str = lvl === 3 ? p.ans.t : lvl === 2 ? p.hints[4] : lvl === 1 ? p.hints[3] : p.cho;
     const key = p.start + ":" + lvl + ":" + (ph === "wait");
     if (key !== boardKey) {
       boardKey = key; const b = $("board"); b.textContent = "";
@@ -515,7 +535,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       else {
         b.dataset.size = str.length <= 8 ? "L" : str.length <= 15 ? "M" : "S";
         for (const w of str.split(" ")) { const g = el("span", "word");
-          for (const ch of w) { const t = el("span", "tile", ch); if (isH(ch)) t.classList.add(lvl === 2 ? "done" : "open"); else if (!isJ(ch)) t.classList.add("plain"); g.appendChild(t); }
+          for (const ch of w) { const t = el("span", "tile", ch); if (isH(ch)) t.classList.add(lvl === 3 ? "done" : "open"); else if (!isJ(ch)) t.classList.add("plain"); g.appendChild(t); }
           b.appendChild(g); }
         b.setAttribute("aria-label", str);
       }
