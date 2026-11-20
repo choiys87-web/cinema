@@ -66,8 +66,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
 .tile.done{background:var(--tile-ink);color:var(--tile);border-color:var(--tile-ink)}
 .board .note{color:var(--tile-ink);opacity:.75;font-size:15px;text-align:center}
 
-.hints{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-@media (max-width:520px){ .hints{grid-template-columns:minmax(0,1fr)} }
+.hints{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:520px){ .hints{grid-template-columns:repeat(2,minmax(0,1fr))} }
 .hints li{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .hints .hl{font-size:12px;color:var(--muted);letter-spacing:.02em}
 .hints .hv{font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -101,7 +101,14 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
 #rank li.me{background:rgba(240,180,41,.18)}
 #rank li.me .nm::after{content:" (나)";color:var(--muted);font-size:12px}
 #rank li.host .nm::before{content:"호스트 ";color:var(--curtain);font-size:12px;font-weight:600}
-#rank .empty,#chatList .empty{color:var(--muted);font-size:13px;display:block;padding:6px}
+#rank .empty,#chatList .empty,#hall .empty{color:var(--muted);font-size:13px;display:block;padding:6px}
+#hall{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:210px;overflow-y:auto}
+#hall li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:5px 6px}
+#hall li + li{border-top:1px solid var(--line)}
+#hall .when{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+#hall .nm{font-weight:600;overflow-wrap:anywhere}
+#hall .nm::before{content:"왕 ";color:var(--curtain);font-size:12px}
+#hall .sc{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 #chatList{list-style:none;margin:0;padding:10px 12px;height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px}
 @media (max-width:520px){ #chatList{height:160px} }
 #chatList li{overflow-wrap:anywhere;font-size:14px}
@@ -144,8 +151,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
         </div>
         <ol class="hints">
           <li id="h1"><span class="hl">힌트 1 · 나라</span><b class="hv">대기 중</b></li>
-          <li id="h2"><span class="hl">힌트 2 · 장르</span><b class="hv">대기 중</b></li>
-          <li id="h3"><span class="hl">힌트 3 · 글자 공개</span><b class="hv">대기 중</b></li>
+          <li id="h2"><span class="hl">힌트 2 · 연도</span><b class="hv">대기 중</b></li>
+          <li id="h3"><span class="hl">힌트 3 · 장르</span><b class="hv">대기 중</b></li>
+          <li id="h4"><span class="hl">힌트 4 · 글자 공개</span><b class="hv">대기 중</b></li>
         </ol>
         <p class="result" id="result" role="status"></p>
         <ul id="chatList" aria-live="polite" aria-label="채팅"><li class="empty">아직 대화가 없습니다.</li></ul>
@@ -180,8 +188,14 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       </section>
 
       <section class="panel">
-        <h2>순위</h2>
+        <h2>순위 · 이번 구간</h2>
         <ol id="rank"><li class="empty">방에 들어가면 참가자가 표시됩니다.</li></ol>
+        <p class="tip" id="rankTip"></p>
+      </section>
+
+      <section class="panel">
+        <h2>명예의 전당</h2>
+        <ol id="hall"><li class="empty">30분마다 점수가 초기화되고, 그 시간에 가장 많이 맞힌 사람이 그 시간의 왕으로 남습니다.</li></ol>
       </section>
     </aside>
   </div>
@@ -192,7 +206,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
 (() => {
   // ── 설정 ─────────────────────────────────────────────
   const Q_MS = 40000;                     // 문제당 제한 시간
-  const HINT_AT = [10000, 20000, 30000];  // 힌트 1·2·3 공개 시점
+  const HINT_AT = [8000, 16000, 24000, 32000];  // 힌트 1·2·3·4(나라·연도·장르·글자) 공개 시점
+  const SLOT_MS = 30 * 60 * 1000;         // 명예의 전당 구간 길이: 이 시간마다 점수를 초기화하고 왕을 기록한다
+  const KEEP_HALL = 24;                   // 명예의 전당에 남기는 구간 수
   const REVEAL_MS = 6000;                 // 정답 공개 후 다음 문제까지
   const KEEP_CHAT = 60;
   const PREFIX = "choseong-cinema-";      // 방 코드 앞에 붙는 연결용 이름
@@ -224,7 +240,10 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   let myPid = ls.get("cq-pid"); if (!myPid) { myPid = rid(10); ls.set("cq-pid", myPid); }
   let myNick = cleanNick(ls.get("cq-nick")) || "관객" + Math.floor(1000 + Math.random() * 9000);
   ls.set("cq-nick", myNick);   // 새로고침해도 같은 이름 유지
-  let boardKey = "", rankSig = "", chatSig = "", lastChatAt = 0;
+  let boardKey = "", rankSig = "", chatSig = "", hallSig = "", lastChatAt = 0;
+  const pad2 = n => String(n).padStart(2, "0");
+  const hm = t => { const d = new Date(t); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); };
+  const slotLabel = s => { const d = new Date(s); return (d.toDateString() === new Date().toDateString() ? "" : (d.getMonth() + 1) + "/" + d.getDate() + " ") + hm(s) + "–" + hm(s + SLOT_MS); };
 
   // 테스트나 자체 중계 서버용: ?signal=host:port
   function peerOpts(){
@@ -239,17 +258,28 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   const players = {};                 // pid → {nick, score}
   const conns = new Map();            // 연결 → pid
   const lastMsg = {};                 // pid → 마지막 수신 시각(도배 방지)
+  let slot = 0, hall = [];            // 지금 구간 번호, 명예의 전당 [{s:구간 시작 시각, nick, n:맞힌 수}]
+  const slotOf = t => Math.floor(t / SLOT_MS);
 
   const online = pid => pid === myPid || Array.from(conns.values()).indexOf(pid) >= 0;
-  function saveRoom(){ ls.set("cq-room-" + code, JSON.stringify({ players, roundNo })); }
+  function saveRoom(){ ls.set("cq-room-" + code, JSON.stringify({ players, roundNo, slot, hall })); }
   function broadcast(msg){ for (const c of conns.keys()) { try { if (c.open) c.send(msg); } catch (e) {} } }
   function pushPub(){ pub = makePub(); lastBeat = Date.now(); broadcast({ t:"pub", pub }); render(); }
   function addChat(m){ chat.push(m); if (chat.length > KEEP_CHAT) chat.shift(); broadcast({ t:"chat", m }); renderChat(); }
   const sysChat = x => addChat({ t: Date.now(), x, sys: true });
 
+  // 구간을 닫는다: 가장 많이 맞힌 사람을 그 시간의 왕으로 기록하고 모두의 점수를 0으로 되돌린다 (동점이면 함께 기록)
+  function closeSlot(){
+    const ids = Object.keys(players), top = ids.reduce((m, k) => Math.max(m, players[k].score), 0); let e = null;
+    if (top > 0) { const names = ids.filter(k => players[k].score === top).map(k => players[k].nick);
+      e = { s: slot * SLOT_MS, nick: names.slice(0, 3).join(", ") + (names.length > 3 ? " 외 " + (names.length - 3) + "명" : ""), n: top };
+      hall.push(e); while (hall.length > KEEP_HALL) hall.shift(); }
+    for (const k of ids) players[k].score = 0;
+    return e;
+  }
   const phaseOf = (r, now) => now < r.start ? "wait" : r.win ? "won" : now < r.start + Q_MS ? "play" : "timeup";
   const nextStart = r => (r.win ? r.win.at : r.start + Q_MS) + REVEAL_MS;
-  function levelOf(r, now, ph){ if (ph === "won" || ph === "timeup") return 3; if (ph !== "play") return 0; const e = now - r.start; return e >= HINT_AT[2] ? 3 : e >= HINT_AT[1] ? 2 : e >= HINT_AT[0] ? 1 : 0; }
+  function levelOf(r, now, ph){ if (ph === "won" || ph === "timeup") return 4; if (ph !== "play") return 0; const e = now - r.start; return e >= HINT_AT[3] ? 4 : e >= HINT_AT[2] ? 3 : e >= HINT_AT[1] ? 2 : e >= HINT_AT[0] ? 1 : 0; }
 
   function startRound(at){
     if (cursor >= order.length) { order = pool.map((_, i) => i); for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; } cursor = 0; }
@@ -260,15 +290,20 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     const list = Object.keys(players).filter(p => online(p) || players[p].score > 0)
       .map(p => ({ pid:p, nick:players[p].nick, score:players[p].score, on:online(p), host:p === myPid }))
       .sort((a, b) => b.score - a.score || a.nick.localeCompare(b.nick)).slice(0, 50);
-    if (!r) return { code, now, ph:"load", players:list, here: list.filter(p => p.on).length };
+    const slotEnd = (slot + 1) * SLOT_MS;
+    if (!r) return { code, now, ph:"load", players:list, here: list.filter(p => p.on).length, slotEnd, hall };
     const ph = phaseOf(r, now), lvl = levelOf(r, now, ph), over = ph === "won" || ph === "timeup", q = r.q;
     return { code, now, ph, start:r.start, dur:Q_MS, hintAt:HINT_AT, next:nextStart(r), no:roundNo,
-      cho: chosung(q.t), hints: [lvl >= 1 ? q.c : null, lvl >= 2 ? q.g : null, lvl >= 3 ? q.h : null],
+      cho: chosung(q.t), hints: [lvl >= 1 ? q.c : null, lvl >= 2 ? q.y + "년" : null, lvl >= 3 ? q.g : null, lvl >= 4 ? q.h : null],
       win: r.win ? { pid:r.win.pid, nick:r.win.nick, sec: (r.win.at - r.start) / 1000 } : null,
-      ans: over ? { t:q.t, y:q.y } : null, players:list, here: list.filter(p => p.on).length };   // 정답은 공개 단계에서만 내보낸다
+      ans: over ? { t:q.t, y:q.y } : null, players:list, here: list.filter(p => p.on).length, slotEnd, hall };   // 정답은 공개 단계에서만 내보낸다
   }
   function hostTick(){
     const now = Date.now(), r = round; if (!r) return;
+    if (slotOf(now) !== slot) {   // 구간이 바뀌었다
+      const e = closeSlot(); slot = slotOf(now); saveRoom();
+      if (e) sysChat(slotLabel(e.s) + "의 왕은 " + e.nick + " 님 (" + e.n + "문제) · 점수를 초기화했습니다"); pushPub();
+    }
     const ns = nextStart(r);
     if (now >= ns) { startRound(now - ns > 4000 ? now + 1500 : ns); return; }
     const ph = phaseOf(r, now), lvl = levelOf(r, now, ph);
@@ -284,7 +319,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     const hit = !!(r && v && phaseOf(r, now) === "play" && (v === r.q.ans || r.q.al.indexOf(v) >= 0));
     const m = { t:now, x, pid, nick:p.nick }; if (hit) m.ok = true; addChat(m);
     if (!hit) return;
-    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 3; p.score++; saveRoom();
+    r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 4; p.score++; saveRoom();
     sysChat(p.nick + " 님 정답 · " + r.q.t); pushPub();
   }
   function onGuestData(c, d){
@@ -310,6 +345,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     role = "host"; let saved = null; try { saved = JSON.parse(ls.get("cq-room-" + code) || "null"); } catch (e) {}
     if (saved && saved.players) for (const k of Object.keys(saved.players)) players[k] = { nick: cleanNick(saved.players[k].nick) || "관객", score: Number(saved.players[k].score) || 0 };
     if (saved && saved.roundNo) roundNo = Number(saved.roundNo) || 0;
+    if (saved && Array.isArray(saved.hall)) hall = saved.hall.filter(e => e && typeof e.nick === "string").map(e => ({ s: Number(e.s) || 0, nick: e.nick.slice(0, 80), n: Number(e.n) || 0 })).slice(-KEEP_HALL);
+    slot = (saved && Number(saved.slot)) || slotOf(Date.now());
+    if (slot !== slotOf(Date.now())) { closeSlot(); slot = slotOf(Date.now()); }   // 방을 닫아 둔 사이 구간이 지났으면 그때 점수로 왕을 정한다
     players[myPid] = { nick: myNick, score: (players[myPid] && players[myPid].score) || 0 };
     enterRoom(); setMode("warn", "방 " + code + " · 방을 여는 중…"); pub = makePub(); render();
     const full = await loadPool();
@@ -382,8 +420,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     setText(li.querySelector(".hv"), on ? shown : ph === "play" ? Math.max(1, Math.ceil(left / 1000)) + "초 뒤 공개" : "대기 중");
   }
   function render(){
-    if (!pub) return; renderRank();
+    if (!pub) return; renderRank(); renderHall();
     const p = pub, now = Date.now() + (role === "guest" ? offset : 0);
+    if (p.slotEnd) { const sec = Math.max(0, Math.ceil((p.slotEnd - now) / 1000)); setText($("rankTip"), hm(p.slotEnd) + "에 점수 초기화 · " + Math.floor(sec / 60) + ":" + pad2(sec % 60) + " 남음"); }
     if (p.ph === "load") { setText($("status"), "문제를 불러오는 중"); return; }
     // 호스트가 보낸 단계와 시계가 살짝 어긋나도 화면은 시간 기준으로 자연스럽게 넘긴다
     const ph = p.ph === "play" && now >= p.start + p.dur ? "timeup" : p.ph === "wait" && now >= p.start ? "play" : p.ph;
@@ -394,9 +433,10 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     setText($("status"), ph === "wait" ? "다음 문제 준비 중" : ph === "play" ? p.no + "번째 문제 · 이 영화의 제목은?" : "정답 공개");
     hintRow("h1", p.hints[0], p.hints[0], p.hintAt[0] - el_, ph);
     hintRow("h2", p.hints[1], p.hints[1], p.hintAt[1] - el_, ph);
-    hintRow("h3", p.hints[2], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[2] - el_, ph);
+    hintRow("h3", p.hints[2], p.hints[2], p.hintAt[2] - el_, ph);
+    hintRow("h4", p.hints[3], p.ans ? "전체 공개" : "간판에 표시됨", p.hintAt[3] - el_, ph);
     // 간판
-    const lvl = p.ans ? 2 : p.hints[2] ? 1 : 0, str = lvl === 2 ? p.ans.t : lvl === 1 ? p.hints[2] : p.cho;
+    const lvl = p.ans ? 2 : p.hints[3] ? 1 : 0, str = lvl === 2 ? p.ans.t : lvl === 1 ? p.hints[3] : p.cho;
     const key = p.start + ":" + lvl + ":" + (ph === "wait");
     if (key !== boardKey) {
       boardKey = key; const b = $("board"); b.textContent = "";
@@ -423,6 +463,14 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     if (!list.length) { ol.appendChild(el("li", "empty", "아직 참가자가 없습니다.")); return; }
     list.forEach((p, i) => { const li = el("li", (p.pid === myPid ? "me " : "") + (p.host ? "host " : "") + (p.on ? "" : "off"));
       li.appendChild(el("span", "no", String(i + 1))); li.appendChild(el("span", "nm", p.nick)); li.appendChild(el("span", "sc", String(p.score))); ol.appendChild(li); });
+  }
+  function renderHall(){
+    const list = (pub && Array.isArray(pub.hall) && pub.hall) || [];
+    const sig = new Date().toDateString() + list.map(e => e.s + e.nick + e.n).join("|"); if (sig === hallSig) return; hallSig = sig;
+    const ol = $("hall"); ol.textContent = "";
+    if (!list.length) { ol.appendChild(el("li", "empty", "30분마다 점수가 초기화되고, 그 시간에 가장 많이 맞힌 사람이 그 시간의 왕으로 남습니다.")); return; }
+    for (const e of list.slice().reverse()) { const li = el("li");   // 최근 구간이 위
+      li.appendChild(el("span", "when", slotLabel(e.s))); li.appendChild(el("span", "nm", String(e.nick))); li.appendChild(el("span", "sc", e.n + "문제")); ol.appendChild(li); }
   }
   function renderChat(){
     const last = chat[chat.length - 1], sig = chat.length + ":" + (last ? last.t + ":" + last.x : ""); if (sig === chatSig) return; chatSig = sig;
