@@ -265,6 +265,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   // ── 설정 ─────────────────────────────────────────────
   const Q_MS = 40000;                     // 문제당 제한 시간
   const HINT_AT = [6000, 12000, 18000, 25000, 32000];  // 힌트 1~5(나라·연도·장르·글자 일부·글자 더) 공개 시점
+  const PICK = [1, 0.3, 0.04];            // 한 바퀴에 넣는 비율: 대중적인 영화는 전부, 보통은 30%, 마이너는 4%만 (pool.json의 등급 1·2·3)
   const REVEAL = [0.3, 0.7];              // 글자 힌트로 보여 주는 한글 글자 비율: 4단계 약 30%, 5단계 최대 70%
   const SLOT_MS = 30 * 60 * 1000;         // 명예의 전당 구간 길이: 이 시간마다 점수를 초기화하고 왕을 기록한다
   const KEEP_HALL = 24;                   // 명예의 전당에 남기는 구간 수
@@ -287,11 +288,11 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
 
   // 문제 목록을 못 불러왔을 때만 쓰는 예시 문제
-  const SAMPLE = [["기생충",2019,"한국","드라마","ㄱ생ㅊ",""],["올드보이",2003,"한국","스릴러","ㅇ드ㅂㅇ",""],["타이타닉",1997,"미국","로맨스","ㅌㅇ타ㄴ",""],
-    ["이웃집 토토로",1988,"일본","애니메이션","ㅇㅇㅈ 토ㅌㄹ",""],["살인의 추억",2003,"한국","범죄","ㅅ인ㅇ ㅊㅇ",""],["인터스텔라",2014,"미국","SF","ㅇㅌ스ㅌㄹ",""],
-    ["극한직업",2019,"한국","코미디","ㄱ한ㅈㅇ",""],["어벤져스",2012,"미국","액션","ㅇ벤ㅈㅅ",""],["러브레터",1995,"일본","로맨스","ㄹ브ㄹㅌ",""],
-    ["범죄도시",2017,"한국","액션","ㅂㅈ도ㅅ",""],["겨울왕국",2013,"미국","애니메이션","ㄱ울ㅇㄱ",""],["부산행",2016,"한국","액션","ㅂ산ㅎ",""]];
-  const toPool = a => a.map(r => ({ t:r[0], y:r[1], c:r[2], g:r[3], ans:norm(r[0]) }));   // 정답은 제목 전체만 인정한다 (부제를 뺀 앞 제목은 인정하지 않음)
+  const SAMPLE = [["기생충",2019,"한국","드라마",1],["올드보이",2003,"한국","스릴러",1],["타이타닉",1997,"미국","로맨스",1],
+    ["이웃집 토토로",1988,"일본","애니메이션",1],["살인의 추억",2003,"한국","범죄",1],["인터스텔라",2014,"미국","SF",1],
+    ["극한직업",2019,"한국","코미디",1],["어벤져스",2012,"미국","액션",1],["러브레터",1995,"일본","로맨스",1],
+    ["범죄도시",2017,"한국","액션",1],["겨울왕국",2013,"미국","애니메이션",1],["부산행",2016,"한국","액션",1]];
+  const toPool = a => a.map(r => ({ t:r[0], y:r[1], c:r[2], g:r[3], k: r[4] === 2 || r[4] === 3 ? r[4] : 1, ans:norm(r[0]) }));   // 정답은 제목 전체만 인정한다 (부제를 뺀 앞 제목은 인정하지 않음)
 
   // ── 공통 상태 ────────────────────────────────────────
   let role = null, code = null, peer = null;
@@ -352,7 +353,9 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
   }
 
   function startRound(at){
-    if (cursor >= order.length) { order = pool.map((_, i) => i); for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; } cursor = 0; }
+    if (cursor >= order.length) {   // 새 바퀴: 등급별 비율로 추려서 섞는다 → 마이너한 영화는 드물게만 나온다
+      order = pool.map((_, i) => i).filter(i => Math.random() < PICK[pool[i].k - 1]); if (!order.length) order = pool.map((_, i) => i);
+      for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; } cursor = 0; }
     round = { q: pool[order[cursor++]], start: at, win: null, ph: "wait", lvl: 0 }; round.lh = letterHints(round.q.t); roundNo++; saveRoom(); pushPub();
   }
   function makePub(){
