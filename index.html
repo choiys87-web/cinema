@@ -215,7 +215,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
           <input type="text" id="chat" maxlength="200" placeholder="채팅 · 정답 입력" autocomplete="off" enterkeyhint="send">
           <button class="primary" id="chatBtn" type="submit">보내기</button>
         </form>
-        <p class="foot" id="foot">채팅에 제목을 쓰면 정답 처리 · 문제당 40초 · 띄어쓰기와 문장부호는 무시합니다 · 부제까지 써야 정답</p>
+        <p class="foot" id="foot">채팅에 제목을 쓰면 정답 처리 · 문제당 40초 · 띄어쓰기와 문장부호는 무시합니다 · 간판에 보이는 숫자·영문은 안 써도 정답 · 부제까지 써야 정답</p>
       </section>
     </main>
 
@@ -365,11 +365,14 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
       r.ph = ph; r.lvl = lvl; pushPub();
     } else if (now - lastBeat > 5000) pushPub();
   }
+  // 간판에 그대로 떠 있는 숫자·영문은 안 쳐도 된다: 정답에서 한글이 아닌 글자를 일부 또는 전부 빼고 쓴 것도 정답으로 본다.
+  // 한글은 하나도 빠지면 안 되고, 숫자·영문을 쓴다면 정답과 같아야 한다 (예: "강철비2: 정상회담" ← "강철비 정상회담" 정답, "강철비3 정상회담" 오답)
+  function isAnswer(v, ans){ let j = 0; for (const c of ans) { if (j < v.length && v[j] === c) j++; else if (isH(c)) return false; } return v.length > 0 && j === v.length; }
   // 채팅 한 줄이 곧 답안이다: 문제 진행 중에 정답과 같으면 정답 처리하고, 아니면 그냥 채팅으로 남는다
   function say(pid, text){
     const p = players[pid], x = String(text || "").trim().slice(0, 200); if (!p || !x) return;
     const now = Date.now(), r = round, v = norm(x);
-    const hit = !!(r && v && phaseOf(r, now) === "play" && v === r.q.ans);
+    const hit = !!(r && v && phaseOf(r, now) === "play" && isAnswer(v, r.q.ans));
     const m = { t:now, x, pid, nick:p.nick }; if (hit) m.ok = true; addChat(m);
     if (!hit) return;
     r.win = { pid, nick:p.nick, at:now }; r.ph = "won"; r.lvl = 4; p.score++; saveRoom();
@@ -404,7 +407,7 @@ aside{display:flex;flex-direction:column;gap:12px;min-width:0}
     players[myPid] = { nick: myNick, score: (players[myPid] && players[myPid].score) || 0 };
     enterRoom(); setMode("warn", "방 " + code + " · 방을 여는 중…"); pub = makePub(); render();
     const full = await loadPool();
-    $("foot").textContent = "채팅에 제목을 쓰면 정답 처리 · 문제당 " + Q_MS / 1000 + "초 · 띄어쓰기와 문장부호는 무시합니다 · 부제까지 써야 정답 · " + (full ? "문제 " + pool.length.toLocaleString("ko-KR") + "편" : "문제 목록(pool.json)을 불러오지 못해 예시 " + pool.length + "편으로 진행 중");
+    $("foot").textContent = "채팅에 제목을 쓰면 정답 처리 · 문제당 " + Q_MS / 1000 + "초 · 띄어쓰기와 문장부호는 무시합니다 · 간판에 보이는 숫자·영문은 안 써도 정답 · 부제까지 써야 정답 · " + (full ? "문제 " + pool.length.toLocaleString("ko-KR") + "편" : "문제 목록(pool.json)을 불러오지 못해 예시 " + pool.length + "편으로 진행 중");
     startRound(Date.now() + 1500); setInterval(hostTick, 250);
     peer = new Peer(PREFIX + code, peerOpts());
     const label = () => setMode("ok", "방 " + code + " · 호스트 · 이 탭을 열어 두는 동안 게임이 이어집니다");
